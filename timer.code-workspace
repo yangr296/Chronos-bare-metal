@@ -1,0 +1,26 @@
+{
+	"folders": [
+        {
+            "name": "timer",
+            "path": "../../../../../opt/nordic/ncs/v2.9.0/modules/hal/nordic/nrfx/samples/src/nrfx_timer/timer"
+        },
+        {
+            "path": "."
+        },
+        {
+            "path": "../Chronos_TestBed"
+        },
+        {
+            "name": "blocking",
+            "path": "../../../../../opt/nordic/ncs/v2.9.0/modules/hal/nordic/nrfx/samples/src/nrfx_spim/blocking"
+        }
+    ],
+    "settings": {
+        "files.associations": {
+            "nrfx_log.h": "c",
+            "devicetree.h": "c",
+            "kernel.h": "c",
+            "nrf_example.h": "c"
+        }
+    }
+}

@@ -1,0 +1,12 @@
+#include "../../../common/common-pinctrl.dtsi"
+
+&spi1 {
+    status = "okay";
+    compatible = "nordic,nrf-spim";
+    pinctrl-0 = <&spi_dummy>;
+    pinctrl-names = "default";
+};
+
+&uart1 {
+    status = "disabled";
+};
