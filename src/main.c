@@ -8,6 +8,7 @@
 #include <nrfx_log.h>
 #include "nrfx_example.h"
 
+//! USE NO-SYS-BUILD 
 // using the controller SPIM4 at 16 MHz frequency
 // SPIM4 is the only onboard spi controller capable of running at 16 MHz
 // other available frequencies: M8, M4, M2, M1, K500, K250
@@ -133,12 +134,7 @@ static void timer_handler(nrf_timer_event_t event_type, void * p_context)
         NRFX_LOG_INFO("Timer finished. Context passed to the handler: >%s<", p_msg);
     }
 }
-
-int main(void)
-{
-    // set clock source and speed
-	//init_clock();
-    (void)status;
+static nrfx_err_t spi_init(){
     nrfx_spim_t spim_inst= NRFX_SPIM_INSTANCE(SPIM_INST_IDX);
     nrfx_spim_config_t spim_config = NRFX_SPIM_DEFAULT_CONFIG(SCK_PIN,
                                                               MOSI_PIN,
@@ -147,14 +143,17 @@ int main(void)
 
     spim_config.frequency = 8000000;
     status = nrfx_spim_init(&spim_inst, &spim_config, NULL, NULL);
-    //! The following give error so I replaced with the above
-    //spim_inst.p_reg = NRF_SPIM0;
-    //spim_inst.drv_inst_idx = NRFX_SPIM0_INST_IDX;
-    
-    // initiating timer instance
-    // TODO figure out why this throws error 
-    //! 'NRFX_TIMER0_INST_IDX' undeclared
-    //! avaliable fixes are for nrf5 SDK not connect 
+    return status;
+}
+
+int main(void)
+{
+    // set clock source and speed
+	//init_clock();
+    (void)status;
+
+    status = spi_init();
+
     nrfx_timer_t timer_inst = NRFX_TIMER_INSTANCE(TIMER_INST_IDX);
     uint32_t base_frequency = NRF_TIMER_BASE_FREQUENCY_GET(timer_inst.p_reg);    
     nrfx_timer_config_t config = NRFX_TIMER_DEFAULT_CONFIG(base_frequency);
@@ -169,22 +168,11 @@ int main(void)
     uint32_t desired_ticks = nrfx_timer_ms_to_ticks(&timer_inst, TIME_TO_WAIT_MS);
     NRFX_LOG_INFO("Time to wait: %lu ms", TIME_TO_WAIT_MS);
 
-    /*
-     * Setting the timer channel NRF_TIMER_CC_CHANNEL0 in the extended compare mode to stop the timer and
-     * trigger an interrupt if internal counter register is equal to desired_ticks.
-     */
     nrfx_timer_extended_compare(&timer_inst, NRF_TIMER_CC_CHANNEL0, desired_ticks,
                                 NRF_TIMER_SHORT_COMPARE0_CLEAR_MASK, true);
 
     nrfx_timer_enable(&timer_inst);
     NRFX_LOG_INFO("Timer status: %s", nrfx_timer_is_enabled(&timer_inst) ? "enabled" : "disabled");
-    
-
-
-
-    // start our timer, with an interval previously defined
-    // on each expiration of the timer, a spi stimulation is performed
-    //! k_timer_start(&spi_timer, SPI_SAMPLE_PERIOD, SPI_SAMPLE_PERIOD);
 
     while(1) {
         __WFE();
