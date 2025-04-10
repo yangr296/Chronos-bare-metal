@@ -7,6 +7,7 @@
 #include <nrfx_timer.h>
 #include <nrfx_log.h>
 #include "nrfx_example.h"
+#include <zephyr/sys/atomic.h>
 
 //! USE NO-SYS-BUILD 
 // using the controller SPIM4 at 16 MHz frequency
@@ -16,7 +17,11 @@
 #define SPI_1_FREQUENCY 	SPIM_FREQUENCY_FREQUENCY_M8 // 16 MHz
 
 #define TIMER_INST_IDX 0
-#define TIME_TO_WAIT_MS 500
+#define TIME_TO_WAIT_US 7700
+
+#define EVENT1_OFFSET_US 100  // x1: Time after main event
+#define EVENT2_OFFSET_US 10  // x2: Time after EVENT1
+#define EVENT3_OFFSET_US 100  // x3: Time after EVENT2
 
 // define the pins and ports that control the clock, miso, and mosi pins on SPI_1
 //      clock:      P0.08
@@ -102,13 +107,10 @@ uint8_t switch_open = 0x00;
 static void init_clock();
 
 // callback for our K_TIMER - triggers a SPI stimulation
-void spi_timer_handler(struct k_timer * dummy);
+// void spi_timer_handler(struct k_timer * dummy);
 
 // keeps track of whether stimulation is currently ongoing
 bool stimming = false;
-
-//TODO: change this to nrfx
-//!K_TIMER_DEFINE(spi_timer, spi_timer_handler, NULL);
 
 /** @brief Symbol specifying SPIM instance to be used. */
 #define SPIM_INST_IDX 1
@@ -123,19 +125,142 @@ bool stimming = false;
 #define SCK_PIN 26
 
 nrfx_err_t status;
-nrfx_spim_t spim_inst;
+static nrfx_spim_t spim_inst = NRFX_SPIM_INSTANCE(SPIM_INST_IDX);
 
-//TODO replace this with the spi_timer_handler 
-static void timer_handler(nrf_timer_event_t event_type, void * p_context)
+// These are used to evaluate precision 
+static uint32_t main_event_time = 0;
+static uint32_t event1_time = 0;
+static uint32_t event2_time = 0;
+static uint32_t event3_time = 0;
+
+static uint32_t timer_freq_hz = 0;      // record the frequency of the timer 
+static atomic_t counter;            // test variable to record how many times the timer handler has been called 
+static atomic_t error;
+static atomic_t event1_error_max;
+static atomic_t event2_error_max;
+static atomic_t event3_error_max;
+static atomic_t event0_error_counter;
+static atomic_t event0_error_max;
+static uint32_t prev_main_event_time = 0;
+static nrfx_timer_t measurement_timer;
+
+// Convert timer ticks to milliseconds manually
+static inline uint32_t ticks_to_ms(uint32_t ticks)
 {
-    if(event_type == NRF_TIMER_EVENT_COMPARE0)
-    {
-        char * p_msg = p_context;
-        NRFX_LOG_INFO("Timer finished. Context passed to the handler: >%s<", p_msg);
+    return (ticks * 1000) / timer_freq_hz;
+}
+
+static void timer_handler(nrf_timer_event_t event_type, void * p_context)
+{   
+    // Get reference to timer
+    atomic_inc(&counter);
+    //printf("Time handler count: %i \n", counter);
+    nrfx_timer_t *timer_inst = (nrfx_timer_t *)p_context;
+    uint32_t current_time;
+    uint32_t current_max;
+    uint32_t my_error;
+    
+    switch(event_type) {
+        case NRF_TIMER_EVENT_COMPARE0:
+            current_time = nrfx_timer_capture(&measurement_timer, NRF_TIMER_CC_CHANNEL0);
+                
+            if (prev_main_event_time > 0) {
+                // Calculate actual interval duration
+                uint32_t interval_ticks = current_time - prev_main_event_time;
+                uint32_t expected_ticks = nrfx_timer_us_to_ticks(&measurement_timer, TIME_TO_WAIT_US);
+                uint32_t event0_error = abs(interval_ticks - expected_ticks);
+                
+                // Update statistics
+                atomic_add(&event0_error_counter, event0_error);
+                
+                // Track maximum error
+                current_max = atomic_get(&event0_error_max);
+                if (event0_error > current_max) {
+                    atomic_set(&event0_error_max, event0_error);
+                }
+            }
+            prev_main_event_time = current_time;
+
+            // atomic_dec(&counter);
+            // Capture timestamp when main event occurs (after timer reset)
+            main_event_time = nrfx_timer_capture(timer_inst, NRF_TIMER_CC_CHANNEL4);
+            //printf("Main timer event at %lu ticks\n", main_event_time);
+            nrfx_spim_xfer_desc_t spim_xfer_desc = NRFX_SPIM_XFER_TRX(sense_buf_tx, SENSE_TX_LEN, sense_buf_rx, SENSE_RX_LEN);
+            status = nrfx_spim_xfer(&spim_inst, &spim_xfer_desc, 0);
+            if(status != NRFX_SUCCESS){
+                printf("SPI ERROR\n");
+            }
+            break;
+            
+        case NRF_TIMER_EVENT_COMPARE1:
+            // Capture timestamp when event 1 occurs
+            event1_time = nrfx_timer_capture(timer_inst, NRF_TIMER_CC_CHANNEL4);
+            // Calculate elapsed time from main event
+            current_time = event1_time;
+            uint32_t elapsed1_ticks = current_time - main_event_time;
+            my_error = abs(elapsed1_ticks-EVENT1_OFFSET_US*timer_freq_hz/1000000);
+            atomic_add(&error,my_error);
+            current_max = atomic_get(&event1_error_max);
+            if (my_error > current_max) {
+                atomic_set(&event1_error_max, my_error);
+            }
+            nrfx_spim_xfer_desc_t spim_xfer_desc1 = NRFX_SPIM_XFER_TRX(dac_buf_tx, DAC_TX_LEN, dac_buf_rx, DAC_RX_LEN);
+            status = nrfx_spim_xfer(&spim_inst, &spim_xfer_desc1, 0);
+            if(status != NRFX_SUCCESS){
+                printf("SPI ERROR\n");
+            }
+            //printf("Expected: %lu, Observed: %lu\n", (EVENT1_OFFSET_US*timer_freq_hz/1000),elapsed1_ticks);
+            //printf("Event 1 triggered at %lu ticks: %lu ticks elapsed (expected %u ms)\n", 
+            //        current_time, elapsed1_ticks, EVENT1_OFFSET_US);
+            break;
+            
+        case NRF_TIMER_EVENT_COMPARE2:
+            // Capture timestamp when event 2 occurs
+            event2_time = nrfx_timer_capture(timer_inst, NRF_TIMER_CC_CHANNEL4);
+            // Calculate elapsed time from event 1
+            current_time = event2_time;
+            uint32_t elapsed2_ticks = current_time - event1_time;
+            my_error = abs(elapsed1_ticks-EVENT2_OFFSET_US*timer_freq_hz/1000000);
+            atomic_add(&error, my_error);
+            current_max = atomic_get(&event2_error_max);
+            if (my_error > current_max) {
+                atomic_set(&event2_error_max, my_error);
+            }
+            nrfx_spim_xfer_desc_t spim_xfer_desc2 = NRFX_SPIM_XFER_TRX(dac_buf_tx, DAC_TX_LEN, dac_buf_rx, DAC_RX_LEN);
+            status = nrfx_spim_xfer(&spim_inst, &spim_xfer_desc2, 0);
+            if(status != NRFX_SUCCESS){
+                printf("SPI ERROR\n");
+            }
+            //printf("Event 2 triggered at %lu ticks: %lu ticks after Event 1 (expected %u ms), %lu ms total\n", 
+            //       current_time, elapsed2_ticks, EVENT2_OFFSET_US, total2_ms);
+            //printf("Expected: %lu, Observed: %lu\n", (EVENT2_OFFSET_US*timer_freq_hz/1000),elapsed2_ticks);
+            break;
+            
+        case NRF_TIMER_EVENT_COMPARE3:
+            // Capture timestamp when event 3 occurs
+            event3_time = nrfx_timer_capture(timer_inst, NRF_TIMER_CC_CHANNEL4);
+            // Calculate elapsed time from event 2
+            current_time = event3_time;
+            my_error = abs(elapsed1_ticks-EVENT3_OFFSET_US*timer_freq_hz/1000000);
+            atomic_add(&error,my_error);
+            current_max = atomic_get(&event3_error_max);
+            if (my_error > current_max) {
+                atomic_set(&event3_error_max, my_error);
+            }
+            nrfx_spim_xfer_desc_t spim_xfer_desc3 = NRFX_SPIM_XFER_TRX(dac_buf_tx, DAC_TX_LEN, dac_buf_rx, DAC_RX_LEN);
+            status = nrfx_spim_xfer(&spim_inst, &spim_xfer_desc3, 0);
+            if(status != NRFX_SUCCESS){
+                printf("SPI ERROR\n");
+            }
+            //printf("Event 3 triggered at %lu ticks: %lu ticks after Event 2 (expected %u ms), %lu ms total\n", 
+            //       current_time, elapsed3_ticks, EVENT3_OFFSET_US, total3_ms);
+            //printf("Expected: %lu, Observed: %lu", (EVENT3_OFFSET_US*timer_freq_hz/1000),elapsed3_ticks);
+            //printf("Counter: %i, Average error: %lu, Running Error: %lu\n", counter, (error/counter), error);
+            break;
     }
 }
+
 static nrfx_err_t spi_init(){
-    nrfx_spim_t spim_inst= NRFX_SPIM_INSTANCE(SPIM_INST_IDX);
     nrfx_spim_config_t spim_config = NRFX_SPIM_DEFAULT_CONFIG(SCK_PIN,
                                                               MOSI_PIN,
                                                               MISO_PIN,
@@ -146,40 +271,101 @@ static nrfx_err_t spi_init(){
     return status;
 }
 
+static nrfx_err_t timer_init(nrfx_timer_t timer_inst){
+    uint32_t base_frequency = NRF_TIMER_BASE_FREQUENCY_GET(timer_inst.p_reg);    
+    timer_freq_hz = base_frequency;
+    printf("Timer frequency: %lu Hz\n", timer_freq_hz);
+    
+    nrfx_timer_config_t config = NRFX_TIMER_DEFAULT_CONFIG(base_frequency);
+    config.bit_width = NRF_TIMER_BIT_WIDTH_32;
+    config.p_context = &timer_inst;  // Pass timer instance as context for measurements
+    status = nrfx_timer_init(&timer_inst, &config, timer_handler);
+    nrfx_timer_clear(&timer_inst);
+    return status;
+}
+
+static nrfx_timer_t measurement_timer_init() {
+    // Initialize a second timer that doesn't auto-clear
+    nrfx_timer_t my_timer = NRFX_TIMER_INSTANCE(1); // Use another timer instance
+    
+    nrfx_timer_config_t config = NRFX_TIMER_DEFAULT_CONFIG(NRF_TIMER_BASE_FREQUENCY_GET(my_timer.p_reg));
+    config.bit_width = NRF_TIMER_BIT_WIDTH_32;
+    nrfx_err_t err = nrfx_timer_init(&my_timer, &config, NULL); // No handler needed
+    nrfx_timer_enable(&my_timer);
+    return my_timer;
+}
+
 int main(void)
 {
     // set clock source and speed
-	//init_clock();
+    init_clock();
+    atomic_set(&counter, 0);
+    atomic_set(&error,0);
     (void)status;
-
+#if defined(__ZEPHYR__)
+    IRQ_CONNECT(NRFX_IRQ_NUMBER_GET(NRF_TIMER_INST_GET(TIMER_INST_IDX)), IRQ_PRIO_LOWEST,
+                NRFX_TIMER_INST_HANDLER_GET(TIMER_INST_IDX), 0, 0);
+#endif
     status = spi_init();
-
-    nrfx_timer_t timer_inst = NRFX_TIMER_INSTANCE(TIMER_INST_IDX);
-    uint32_t base_frequency = NRF_TIMER_BASE_FREQUENCY_GET(timer_inst.p_reg);    
-    nrfx_timer_config_t config = NRFX_TIMER_DEFAULT_CONFIG(base_frequency);
-    config.bit_width = NRF_TIMER_BIT_WIDTH_32;
-    config.p_context = "Some context";
-    status = nrfx_timer_init(&timer_inst, &config, timer_handler);
     NRFX_ASSERT(status == NRFX_SUCCESS);
-
-    nrfx_timer_clear(&timer_inst);
-
-    // TIME_TO_WAIT_MS sets the period of the timer
-    uint32_t desired_ticks = nrfx_timer_ms_to_ticks(&timer_inst, TIME_TO_WAIT_MS);
-    NRFX_LOG_INFO("Time to wait: %lu ms", TIME_TO_WAIT_MS);
-
+    nrfx_timer_t timer_inst = NRFX_TIMER_INSTANCE(TIMER_INST_IDX);
+    status = timer_init(timer_inst);
+    NRFX_ASSERT(status == NRFX_SUCCESS);
+    measurement_timer = measurement_timer_init();
+    // Configure main timer interval (repeating)
+    uint32_t desired_ticks = nrfx_timer_us_to_ticks(&timer_inst, TIME_TO_WAIT_US);
+    NRFX_LOG_INFO("Time to wait: %lu ms", TIME_TO_WAIT_US);
+    
+    // CC0: Main timer interval with auto-clear for repeating operation
     nrfx_timer_extended_compare(&timer_inst, NRF_TIMER_CC_CHANNEL0, desired_ticks,
                                 NRF_TIMER_SHORT_COMPARE0_CLEAR_MASK, true);
+    
+    // Convert microsecond offsets to timer ticks
+    uint32_t event1_ticks = nrfx_timer_us_to_ticks(&timer_inst, EVENT1_OFFSET_US);
+    uint32_t event2_ticks = nrfx_timer_us_to_ticks(&timer_inst, (EVENT1_OFFSET_US + EVENT2_OFFSET_US));
+    uint32_t event3_ticks = nrfx_timer_us_to_ticks(&timer_inst, (EVENT1_OFFSET_US + EVENT2_OFFSET_US + EVENT3_OFFSET_US));
+    
+    // CC1: Event 1 timing (x1 ms after main event)
+    //! 8 channels per timer 
+    nrfx_timer_extended_compare(&timer_inst, NRF_TIMER_CC_CHANNEL1, event1_ticks, 0, true);
+    
+    // CC2: Event 2 timing (x1+x2 ms after main event)
+    nrfx_timer_extended_compare(&timer_inst, NRF_TIMER_CC_CHANNEL2, event2_ticks, 0, true);
+    
+    // CC3: Event 3 timing (x1+x2+x3 ms after main event)
+    nrfx_timer_extended_compare(&timer_inst, NRF_TIMER_CC_CHANNEL3, event3_ticks, 0, true);
 
     nrfx_timer_enable(&timer_inst);
     NRFX_LOG_INFO("Timer status: %s", nrfx_timer_is_enabled(&timer_inst) ? "enabled" : "disabled");
-
+    uint32_t experiment_counter = 0;
     while(1) {
-        __WFE();
-    }
-	return 0;
-}
+        //NRFX_EXAMPLE_LOG_PROCESS();
+        k_msleep(10000);
+        experiment_counter += 10;
+        uint32_t mycounter = atomic_get(&counter);
+        uint32_t myerror = atomic_get(&error);
+        // printf("Counter: %i, Average error: %lu, Running Error: %lu\n", mycounter, (myerror/mycounter), myerror);
+        uint32_t event0_error = atomic_get(&event0_error_counter);
+        uint32_t event0_max = atomic_get(&event0_error_max);
+        uint32_t event1_max = atomic_get(&event1_error_max);
+        uint32_t event2_max = atomic_get(&event2_error_max);
+        uint32_t event3_max = atomic_get(&event3_error_max);
 
+        printf("Counter: %i Elapsed: %is\nEvent0 running error: %lu avg error: %lu max error: %lu\nEvents1-3 running error: %lu avg error: %lu max error: %lu, %lu, %lu\n", 
+               mycounter, 
+               experiment_counter,
+               event0_error,
+               (event0_error/mycounter), 
+               event0_max,
+               myerror,
+               (myerror/mycounter),
+               event1_max,
+               event2_max,
+               event3_max);
+    }
+    return 0;
+}
+/*
 void spi_timer_handler(struct k_timer * dummy) {
     //! NRFX_SPIM_XFER_TRX() sets both rx and tx buffer
     //! nrfx_spim_xfer() starts transfer 
@@ -219,8 +405,10 @@ void spi_timer_handler(struct k_timer * dummy) {
     status = nrfx_spim_xfer(&spim_inst, &spim_xfer_desc3, 0);
     stimming = false;
 }
+*/
 
-/*
+
+
 static void init_clock() {
 	// select the clock source: HFINT (high frequency internal oscillator) or HFXO (external 32 MHz crystal)
 	NRF_CLOCK_S->HFCLKSRC = (CLOCK_HFCLKSRC_SRC_HFINT << CLOCK_HFCLKSRC_SRC_Pos);
@@ -231,6 +419,6 @@ static void init_clock() {
     NRF_CLOCK_S->EVENTS_HFCLKSTARTED = 0;
 }
 
-*/
+
 
 

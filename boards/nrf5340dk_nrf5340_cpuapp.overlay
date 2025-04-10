@@ -1,4 +1,4 @@
-#include "../../../common/common-pinctrl.dtsi"
+#include "../common-pinctrl.dtsi"
 
 &spi1 {
     status = "okay";
