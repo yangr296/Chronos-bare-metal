@@ -1,7 +1,6 @@
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
-
 #include "nrf_example.h"
 #include <nrfx_spim.h>
 #include <nrfx_timer.h>
@@ -17,11 +16,11 @@
 #define SPI_1_FREQUENCY 	SPIM_FREQUENCY_FREQUENCY_M8 // 16 MHz
 
 #define TIMER_INST_IDX 0
-#define TIME_TO_WAIT_US 7700
+#define TIME_TO_WAIT_US 4000000
 
-#define EVENT1_OFFSET_US 100  // x1: Time after main event
-#define EVENT2_OFFSET_US 10  // x2: Time after EVENT1
-#define EVENT3_OFFSET_US 100  // x3: Time after EVENT2
+#define EVENT1_OFFSET_US 1000000  // x1: Time after main event
+#define EVENT2_OFFSET_US 1000000  // x2: Time after EVENT1
+#define EVENT3_OFFSET_US 1000000 // x3: Time after EVENT2
 
 // define the pins and ports that control the clock, miso, and mosi pins on SPI_1
 //      clock:      P0.08
@@ -51,7 +50,7 @@
 #define SENSE_TX_LEN		1
 #define SENSE_RX_LEN		1
 uint8_t sense_buf_rx[SENSE_RX_LEN];
-uint8_t sense_buf_tx[SENSE_TX_LEN] = {0xFF};
+uint8_t sense_buf_tx[SENSE_TX_LEN] = {0x01};
 
 // define pins and ports for dac slave:         P0.25
 #define DAC_CS_PIN_NUM      25
@@ -116,7 +115,7 @@ bool stimming = false;
 #define SPIM_INST_IDX 1
 
 /** @brief Symbol specifying pin number for MOSI. */
-#define MOSI_PIN 7
+#define MOSI_PIN 3
 
 /** @brief Symbol specifying pin number for MISO. */
 #define MISO_PIN 25
@@ -209,9 +208,6 @@ static void timer_handler(nrf_timer_event_t event_type, void * p_context)
             if(status != NRFX_SUCCESS){
                 printf("SPI ERROR\n");
             }
-            //printf("Expected: %lu, Observed: %lu\n", (EVENT1_OFFSET_US*timer_freq_hz/1000),elapsed1_ticks);
-            //printf("Event 1 triggered at %lu ticks: %lu ticks elapsed (expected %u ms)\n", 
-            //        current_time, elapsed1_ticks, EVENT1_OFFSET_US);
             break;
             
         case NRF_TIMER_EVENT_COMPARE2:
@@ -231,9 +227,6 @@ static void timer_handler(nrf_timer_event_t event_type, void * p_context)
             if(status != NRFX_SUCCESS){
                 printf("SPI ERROR\n");
             }
-            //printf("Event 2 triggered at %lu ticks: %lu ticks after Event 1 (expected %u ms), %lu ms total\n", 
-            //       current_time, elapsed2_ticks, EVENT2_OFFSET_US, total2_ms);
-            //printf("Expected: %lu, Observed: %lu\n", (EVENT2_OFFSET_US*timer_freq_hz/1000),elapsed2_ticks);
             break;
             
         case NRF_TIMER_EVENT_COMPARE3:
@@ -252,11 +245,16 @@ static void timer_handler(nrf_timer_event_t event_type, void * p_context)
             if(status != NRFX_SUCCESS){
                 printf("SPI ERROR\n");
             }
-            //printf("Event 3 triggered at %lu ticks: %lu ticks after Event 2 (expected %u ms), %lu ms total\n", 
-            //       current_time, elapsed3_ticks, EVENT3_OFFSET_US, total3_ms);
-            //printf("Expected: %lu, Observed: %lu", (EVENT3_OFFSET_US*timer_freq_hz/1000),elapsed3_ticks);
-            //printf("Counter: %i, Average error: %lu, Running Error: %lu\n", counter, (error/counter), error);
             break;
+    }
+}
+static void spim_handler(nrfx_spim_evt_t const * p_event, void * p_context)
+{
+    if (p_event->type == NRFX_SPIM_EVENT_DONE)
+    {
+        char * p_msg = p_context;
+        //printf("SPIM finished. Context passed to the handler: >%s<\n", p_msg);
+        printf("Message received: %s\n", p_event->xfer_desc.p_rx_buffer);
     }
 }
 
@@ -267,7 +265,7 @@ static nrfx_err_t spi_init(){
                                                               NRF_SPIM_PIN_NOT_CONNECTED);
 
     spim_config.frequency = 8000000;
-    status = nrfx_spim_init(&spim_inst, &spim_config, NULL, NULL);
+    status = nrfx_spim_init(&spim_inst, &spim_config, spim_handler, NULL);
     return status;
 }
 
@@ -305,6 +303,8 @@ int main(void)
 #if defined(__ZEPHYR__)
     IRQ_CONNECT(NRFX_IRQ_NUMBER_GET(NRF_TIMER_INST_GET(TIMER_INST_IDX)), IRQ_PRIO_LOWEST,
                 NRFX_TIMER_INST_HANDLER_GET(TIMER_INST_IDX), 0, 0);
+    IRQ_CONNECT(NRFX_IRQ_NUMBER_GET(NRF_SPIM_INST_GET(SPIM_INST_IDX)), IRQ_PRIO_LOWEST,
+                NRFX_SPIM_INST_HANDLER_GET(SPIM_INST_IDX), 0, 0);
 #endif
     status = spi_init();
     NRFX_ASSERT(status == NRFX_SUCCESS);
