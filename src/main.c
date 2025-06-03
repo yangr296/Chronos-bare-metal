@@ -16,97 +16,31 @@
 #define SPI_1_FREQUENCY 	SPIM_FREQUENCY_FREQUENCY_M8 // 16 MHz
 
 #define TIMER_INST_IDX 0
-#define TIME_TO_WAIT_US 4000000
 
+//This is the time between stim
+#define STIM_TIMER 4000000
+
+// This is the time between SPI transac on DAC1 and switching 1.03 off
 #define EVENT1_OFFSET_US 1000000  // x1: Time after main event
+// This is the time between switching 1.03 off and SPI transac on DAC2 
 #define EVENT2_OFFSET_US 1000000  // x2: Time after EVENT1
+// This is the time between SPI transac on DAC2 and switching 1.03 off
 #define EVENT3_OFFSET_US 1000000 // x3: Time after EVENT2
 
-// define the pins and ports that control the clock, miso, and mosi pins on SPI_1
-//      clock:      P0.08
-//      miso:       P0.09
-//      mosi:       P0.10
-#define SPI_1_CLK_PIN_NUM     	10
-#define SPI_1_MOSI_PIN_NUM    	11
-#define SPI_1_MISO_PIN_NUM    	12
 
-#define SPI_1_CLK_PORT    	NRF_P1_S
-#define SPI_1_MOSI_PORT   	NRF_P1_S
-#define SPI_1_MISO_PORT   	NRF_P1_S
-
-#define SPI_1_CLK_PORT_NUM    	1
-#define SPI_1_MOSI_PORT_NUM   	1
-#define SPI_1_MISO_PORT_NUM   	1
-
-// all of these slave devices are placed on the same controller: SPI_1 = SPIM
-#define SENSE_SPI_CONTROLLER    SPI_1
-#define DAC_SPI_CONTROLLER      SPI_1
-#define SWITCH_SPI_CONTROLLER   SPI_1
-
-// define pin and ports for sensing slave:      P0.07
-#define SENSE_CS_PIN_NUM    7
-#define SENSE_CS_PORT_NUM   0
-#define SENSE_CS_PORT       NRF_P0_S
-#define SENSE_TX_LEN		1
-#define SENSE_RX_LEN		1
-uint8_t sense_buf_rx[SENSE_RX_LEN];
-uint8_t sense_buf_tx[SENSE_TX_LEN] = {0x01};
 
 // define pins and ports for dac slave:         P0.25
-#define DAC_CS_PIN_NUM      25
-#define DAC_CS_PORT_NUM     0
-#define DAC_CS_PORT         NRF_P0_S
+#define DAC1_CS_PIN 16  // P0.16
+#define DAC2_CS_PIN 26  // P0.26
 #define DAC_TX_LEN			2
 #define DAC_RX_LEN			2
-uint8_t dac_buf_rx[DAC_RX_LEN];
-uint8_t dac_buf_tx[DAC_TX_LEN] = {0x55, 0x55};
-
-// define pins and ports for switching slave:   P0.26
-#define SWITCH_CS_PIN_NUM   26
-#define SWITCH_CS_PORT_NUM  0
-#define SWITCH_CS_PORT      NRF_P0_S
-#define SWITCH_TX_LEN		1
-#define SWITCH_RX_LEN		1
-uint8_t switch_buf_rx[SWITCH_RX_LEN];
-uint8_t switch_buf_tx[SWITCH_TX_LEN] = {0x01};
-
-// data which is to be sent on the mosi line to the slave devices
-// note that there is a different variable not only for each device, but each type of transmission
-// I tried to change the value only between transmissions, but the data will remain the same unless pointer is changed
-uint8_t sense_on = 0xFF;
-uint8_t sense_off = 0x00;
-uint16_t dac_high = 0xFFFF;
-uint16_t dac_off = 0x5555;
-uint16_t dac_low = 0x0000;
-uint8_t switch_short = 0xFF;
-uint8_t switch_open = 0x00;
-
-#define SPI_SET_RX_BUFFER(controller, rxptr, len)	controller->RXD.PTR = (uint32_t)rxptr;	\
-													controller->RXD.MAXCNT = len
-
-#define SPI_SET_TX_BUFFER(controller, txptr, len)	controller->TXD.PTR = (uint32_t)txptr; 	\
-													controller->TXD.MAXCNT = len				
-
-// complete a full spi transaction - equivalent to calling START_SPI_TRANS and WAIT_SPI_TRANS sequentially
-#define TRANSMIT_SPI(controller, pin, port)     port->OUTCLR = (1 << pin); \
-											    controller->TASKS_START = 1; \
-                                                while(!controller->EVENTS_END); \
-												controller->EVENTS_END = 0; \
-												port->OUTSET = (1 << pin)
-
-// helper macros to enable and disable a particular spi controller
-#define ENABLE_SPI(controller) controller->ENABLE = SPIM_ENABLE_ENABLE_Enabled; while(controller->ENABLE != SPIM_ENABLE_ENABLE_Enabled)
-#define DISABLE_SPI(controller) controller->ENABLE = SPIM_ENABLE_ENABLE_Disabled
-
-// set the interval for spi stimulation
-// e.g. 1000 us interval corresponds to a stimulation frequency of 1 / 1000 us =  1 kHz
-#define SPI_SAMPLE_PERIOD_US 1000
-#define SPI_SAMPLE_PERIOD K_USEC(SPI_SAMPLE_PERIOD_US)
+//! might need separate buffers for each transaction
+uint8_t dac1_buf_rx[DAC_RX_LEN];
+uint8_t dac1_buf_tx[DAC_TX_LEN] = {0x52, 0x53};
+uint8_t dac2_buf_rx[DAC_RX_LEN];
+uint8_t dac2_buf_tx[DAC_TX_LEN] = {0x54, 0x55};
 
 static void init_clock();
-
-// callback for our K_TIMER - triggers a SPI stimulation
-// void spi_timer_handler(struct k_timer * dummy);
 
 // keeps track of whether stimulation is currently ongoing
 bool stimming = false;
@@ -115,13 +49,13 @@ bool stimming = false;
 #define SPIM_INST_IDX 1
 
 /** @brief Symbol specifying pin number for MOSI. */
-#define MOSI_PIN 3
+#define MOSI_PIN NRF_GPIO_PIN_MAP(0, 7)
 
 /** @brief Symbol specifying pin number for MISO. */
 #define MISO_PIN 25
 
 /** @brief Symbol specifying pin number for SCK. */
-#define SCK_PIN 26
+#define SCK_PIN NRF_GPIO_PIN_MAP(1, 2)   //1.02
 
 nrfx_err_t status;
 static nrfx_spim_t spim_inst = NRFX_SPIM_INSTANCE(SPIM_INST_IDX);
@@ -143,10 +77,43 @@ static atomic_t event0_error_max;
 static uint32_t prev_main_event_time = 0;
 static nrfx_timer_t measurement_timer;
 
-// Convert timer ticks to milliseconds manually
-static inline uint32_t ticks_to_ms(uint32_t ticks)
-{
-    return (ticks * 1000) / timer_freq_hz;
+// Helper functions for cleaner CS control
+static inline void cs_select(uint32_t pin_number) {
+    nrf_gpio_pin_clear(pin_number);  // Drive CS low (active)
+}
+
+static inline void cs_deselect(uint32_t pin_number) {
+    nrf_gpio_pin_set(pin_number);     // Drive CS high (inactive)
+}
+
+static void spi_write_dac1(uint8_t *tx_data, uint8_t *rx_data) {
+    // Select DAC1
+    cs_select(DAC1_CS_PIN);
+    
+    // Prepare transfer descriptor
+    nrfx_spim_xfer_desc_t xfer_desc = NRFX_SPIM_XFER_TRX(tx_data, DAC_TX_LEN, rx_data, DAC_RX_LEN);
+    
+    // Perform the transfer
+    nrfx_err_t err = nrfx_spim_xfer(&spim_inst, &xfer_desc, 0);
+    if(err != NRFX_SUCCESS){
+        printf("SPI ERROR\n");
+    }
+    cs_deselect(DAC1_CS_PIN);
+}
+
+static void spi_write_dac2(uint8_t *tx_data, uint8_t *rx_data) {
+    // Select DAC1
+    cs_select(DAC2_CS_PIN);
+    
+    // Prepare transfer descriptor
+    nrfx_spim_xfer_desc_t xfer_desc = NRFX_SPIM_XFER_TRX(tx_data, DAC_TX_LEN, rx_data, DAC_RX_LEN);
+    
+    // Perform the transfer
+    nrfx_err_t err = nrfx_spim_xfer(&spim_inst, &xfer_desc, 0);
+    if(err != NRFX_SUCCESS){
+        printf("SPI ERROR\n");
+    }
+    cs_deselect(DAC2_CS_PIN);
 }
 
 static void timer_handler(nrf_timer_event_t event_type, void * p_context)
@@ -166,7 +133,7 @@ static void timer_handler(nrf_timer_event_t event_type, void * p_context)
             if (prev_main_event_time > 0) {
                 // Calculate actual interval duration
                 uint32_t interval_ticks = current_time - prev_main_event_time;
-                uint32_t expected_ticks = nrfx_timer_us_to_ticks(&measurement_timer, TIME_TO_WAIT_US);
+                uint32_t expected_ticks = nrfx_timer_us_to_ticks(&measurement_timer, STIM_TIMER);
                 uint32_t event0_error = abs(interval_ticks - expected_ticks);
                 
                 // Update statistics
@@ -179,75 +146,70 @@ static void timer_handler(nrf_timer_event_t event_type, void * p_context)
                 }
             }
             prev_main_event_time = current_time;
-
-            // atomic_dec(&counter);
             // Capture timestamp when main event occurs (after timer reset)
             main_event_time = nrfx_timer_capture(timer_inst, NRF_TIMER_CC_CHANNEL4);
-            //printf("Main timer event at %lu ticks\n", main_event_time);
-            nrfx_spim_xfer_desc_t spim_xfer_desc = NRFX_SPIM_XFER_TRX(sense_buf_tx, SENSE_TX_LEN, sense_buf_rx, SENSE_RX_LEN);
-            status = nrfx_spim_xfer(&spim_inst, &spim_xfer_desc, 0);
-            if(status != NRFX_SUCCESS){
-                printf("SPI ERROR\n");
-            }
+
+            // Switch on 1.03
+            nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(1, 3));
+            // SPI transaction on DAC 1
+            // 100 us
+            spi_write_dac1(dac1_buf_tx, dac2_buf_rx);
             break;
             
         case NRF_TIMER_EVENT_COMPARE1:
             // Capture timestamp when event 1 occurs
-            event1_time = nrfx_timer_capture(timer_inst, NRF_TIMER_CC_CHANNEL4);
+            current_time = nrfx_timer_capture(timer_inst, NRF_TIMER_CC_CHANNEL4);
             // Calculate elapsed time from main event
-            current_time = event1_time;
             uint32_t elapsed1_ticks = current_time - main_event_time;
             my_error = abs(elapsed1_ticks-EVENT1_OFFSET_US*timer_freq_hz/1000000);
             atomic_add(&error,my_error);
             current_max = atomic_get(&event1_error_max);
-            if (my_error > current_max) {
-                atomic_set(&event1_error_max, my_error);
-            }
-            nrfx_spim_xfer_desc_t spim_xfer_desc1 = NRFX_SPIM_XFER_TRX(dac_buf_tx, DAC_TX_LEN, dac_buf_rx, DAC_RX_LEN);
-            status = nrfx_spim_xfer(&spim_inst, &spim_xfer_desc1, 0);
-            if(status != NRFX_SUCCESS){
-                printf("SPI ERROR\n");
-            }
+            if (my_error > current_max) {atomic_set(&event1_error_max, my_error);}
+
+            // Switch off 1.03
+            nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 3));
+            // Switch on 1.00
+            nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(1, 0));
+            // Switch on 1.01
+            nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(1, 1));
+            // wait 10 us
             break;
             
         case NRF_TIMER_EVENT_COMPARE2:
             // Capture timestamp when event 2 occurs
-            event2_time = nrfx_timer_capture(timer_inst, NRF_TIMER_CC_CHANNEL4);
+            current_time = nrfx_timer_capture(timer_inst, NRF_TIMER_CC_CHANNEL4);
             // Calculate elapsed time from event 1
-            current_time = event2_time;
-            uint32_t elapsed2_ticks = current_time - event1_time;
             my_error = abs(elapsed1_ticks-EVENT2_OFFSET_US*timer_freq_hz/1000000);
             atomic_add(&error, my_error);
             current_max = atomic_get(&event2_error_max);
-            if (my_error > current_max) {
-                atomic_set(&event2_error_max, my_error);
-            }
-            nrfx_spim_xfer_desc_t spim_xfer_desc2 = NRFX_SPIM_XFER_TRX(dac_buf_tx, DAC_TX_LEN, dac_buf_rx, DAC_RX_LEN);
-            status = nrfx_spim_xfer(&spim_inst, &spim_xfer_desc2, 0);
-            if(status != NRFX_SUCCESS){
-                printf("SPI ERROR\n");
-            }
+            if (my_error > current_max) {atomic_set(&event2_error_max, my_error);}
+
+            // Switch on 1.03
+            nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(1, 3));
+            // SPI transaction on DAC2 
+            // 100 us
+            spi_write_dac2(dac2_buf_tx, dac2_buf_rx);
             break;
             
         case NRF_TIMER_EVENT_COMPARE3:
             // Capture timestamp when event 3 occurs
-            event3_time = nrfx_timer_capture(timer_inst, NRF_TIMER_CC_CHANNEL4);
+            current_time = nrfx_timer_capture(timer_inst, NRF_TIMER_CC_CHANNEL4);
             // Calculate elapsed time from event 2
-            current_time = event3_time;
             my_error = abs(elapsed1_ticks-EVENT3_OFFSET_US*timer_freq_hz/1000000);
             atomic_add(&error,my_error);
             current_max = atomic_get(&event3_error_max);
-            if (my_error > current_max) {
-                atomic_set(&event3_error_max, my_error);
-            }
-            nrfx_spim_xfer_desc_t spim_xfer_desc3 = NRFX_SPIM_XFER_TRX(dac_buf_tx, DAC_TX_LEN, dac_buf_rx, DAC_RX_LEN);
-            status = nrfx_spim_xfer(&spim_inst, &spim_xfer_desc3, 0);
-            if(status != NRFX_SUCCESS){
-                printf("SPI ERROR\n");
-            }
+            if (my_error > current_max) {atomic_set(&event3_error_max, my_error);}
+            // Switch off 1.03
+            nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 3));
+            // Switch on 1.00
+            nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(1, 0));
+            // Switch on 1.01
+            nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(1, 1));
+            // wait 10 us
             break;
     }
 }
+
 static void spim_handler(nrfx_spim_evt_t const * p_event, void * p_context)
 {
     if (p_event->type == NRFX_SPIM_EVENT_DONE)
@@ -258,6 +220,31 @@ static void spim_handler(nrfx_spim_evt_t const * p_event, void * p_context)
     }
 }
 
+static void init_misc_pins(void) {
+    // Configure P0.16 as output (DAC1 CS)
+    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(0, 16));
+    nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 16));  // Set high (inactive)
+    
+    // Configure P0.26 as output (DAC2 CS)
+    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(0, 26));
+    nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(0, 26));  // Set high (inactive)
+    
+    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(1, 3));
+    nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 3)); // set low
+
+    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(1, 0));
+    nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 0)); // set low
+
+    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(1, 1));
+    nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 1)); // set low
+}
+
+
+
+
+
+
+
 static nrfx_err_t spi_init(){
     nrfx_spim_config_t spim_config = NRFX_SPIM_DEFAULT_CONFIG(SCK_PIN,
                                                               MOSI_PIN,
@@ -266,6 +253,14 @@ static nrfx_err_t spi_init(){
 
     spim_config.frequency = 8000000;
     status = nrfx_spim_init(&spim_inst, &spim_config, spim_handler, NULL);
+    if (status == NRFX_SUCCESS) {
+        printf("SPI initialized successfully on SPIM%d\n", SPIM_INST_IDX);
+        printf("  SCK: P%d.%02d\n", (SCK_PIN >> 5), (SCK_PIN & 0x1F));
+        printf("  MOSI: P%d.%02d\n", (MOSI_PIN >> 5), (MOSI_PIN & 0x1F)); 
+        printf("  MISO: P%d.%02d\n", (MISO_PIN >> 5), (MISO_PIN & 0x1F));
+    } else {
+        printf("SPI initialization failed with error: %d\n", status);
+    }
     return status;
 }
 
@@ -299,6 +294,7 @@ int main(void)
     init_clock();
     atomic_set(&counter, 0);
     atomic_set(&error,0);
+    init_misc_pins();
     (void)status;
 #if defined(__ZEPHYR__)
     IRQ_CONNECT(NRFX_IRQ_NUMBER_GET(NRF_TIMER_INST_GET(TIMER_INST_IDX)), IRQ_PRIO_LOWEST,
@@ -313,8 +309,8 @@ int main(void)
     NRFX_ASSERT(status == NRFX_SUCCESS);
     measurement_timer = measurement_timer_init();
     // Configure main timer interval (repeating)
-    uint32_t desired_ticks = nrfx_timer_us_to_ticks(&timer_inst, TIME_TO_WAIT_US);
-    NRFX_LOG_INFO("Time to wait: %lu ms", TIME_TO_WAIT_US);
+    uint32_t desired_ticks = nrfx_timer_us_to_ticks(&timer_inst, STIM_TIMER);
+    NRFX_LOG_INFO("Time to wait: %lu ms", STIM_TIMER);
     
     // CC0: Main timer interval with auto-clear for repeating operation
     nrfx_timer_extended_compare(&timer_inst, NRF_TIMER_CC_CHANNEL0, desired_ticks,

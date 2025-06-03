@@ -1,8 +1,11 @@
 #include "../common-pinctrl.dtsi"
 
+/* We're using nrfx directly, so disable Zephyr's SPI driver */
 &spi1 {
+    status = "disabled";
+};
+
+/* Still need to release NFC pins for GPIO use */
+&gpio0 {
     status = "okay";
-    compatible = "nordic,nrf-spim";
-    pinctrl-0 = <&spi_dummy>;
-    pinctrl-names = "default";
 };
