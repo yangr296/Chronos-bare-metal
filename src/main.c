@@ -1,11 +1,9 @@
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
-#include "nrf_example.h"
 #include <nrfx_spim.h>
 #include <nrfx_timer.h>
 #include <nrfx_log.h>
-#include "nrfx_example.h"
 #include <zephyr/sys/atomic.h>
 
 //! USE NO-SYS-BUILD 
