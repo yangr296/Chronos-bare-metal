@@ -2,7 +2,10 @@
 # This file should be included in each CMakeLists.txt if compiled with west tool under Zephyr.
 
 # Add common Kconfig file to project.
-list(APPEND CONF_FILE "${CMAKE_CURRENT_LIST_DIR}/common.conf")
+set(COMMON_CONF_FILE "${CMAKE_CURRENT_LIST_DIR}/common.conf")
+if(EXISTS ${COMMON_CONF_FILE})
+    list(APPEND CONF_FILE ${COMMON_CONF_FILE})
+endif()
 
 # Add project Kconfig file if it exists.
 set(PRJ_CONF_FILE "${CMAKE_CURRENT_SOURCE_DIR}/prj.conf")
