@@ -6,4 +6,6 @@ target_include_directories(app PRIVATE ./)
 include(common.cmake)
 project(bm_timer)
 GET_DEVICE_CONFIG_FILES(${BOARD} ./boards)
-target_sources(app PRIVATE src/main.c)
+target_sources(app PRIVATE 
+src/main.c
+src/spi.c)

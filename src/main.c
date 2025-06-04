@@ -5,13 +5,7 @@
 #include <nrfx_timer.h>
 #include <nrfx_log.h>
 #include <zephyr/sys/atomic.h>
-
-//! USE NO-SYS-BUILD 
-// using the controller SPIM4 at 16 MHz frequency
-// SPIM4 is the only onboard spi controller capable of running at 16 MHz
-// other available frequencies: M8, M4, M2, M1, K500, K250
-#define SPI_1 				NRF_SPIM0_S
-#define SPI_1_FREQUENCY 	SPIM_FREQUENCY_FREQUENCY_M8 // 16 MHz
+#include "spi.h"
 
 #define TIMER_INST_IDX 0
 
@@ -24,7 +18,6 @@
 #define EVENT2_OFFSET_US 1000000  // x2: Time after EVENT1
 // This is the time between SPI transac on DAC2 and switching 1.03 off
 #define EVENT3_OFFSET_US 1000000 // x3: Time after EVENT2
-
 
 
 // define pins and ports for dac slave:         P0.25
@@ -43,20 +36,7 @@ static void init_clock();
 // keeps track of whether stimulation is currently ongoing
 bool stimming = false;
 
-/** @brief Symbol specifying SPIM instance to be used. */
-#define SPIM_INST_IDX 1
-
-/** @brief Symbol specifying pin number for MOSI. */
-#define MOSI_PIN NRF_GPIO_PIN_MAP(0, 7)
-
-/** @brief Symbol specifying pin number for MISO. */
-#define MISO_PIN 25
-
-/** @brief Symbol specifying pin number for SCK. */
-#define SCK_PIN NRF_GPIO_PIN_MAP(1, 2)   //1.02
-
 nrfx_err_t status;
-static nrfx_spim_t spim_inst = NRFX_SPIM_INSTANCE(SPIM_INST_IDX);
 
 // These are used to evaluate precision 
 static uint32_t main_event_time = 0;
@@ -74,45 +54,6 @@ static atomic_t event0_error_counter;
 static atomic_t event0_error_max;
 static uint32_t prev_main_event_time = 0;
 static nrfx_timer_t measurement_timer;
-
-// Helper functions for cleaner CS control
-static inline void cs_select(uint32_t pin_number) {
-    nrf_gpio_pin_clear(pin_number);  // Drive CS low (active)
-}
-
-static inline void cs_deselect(uint32_t pin_number) {
-    nrf_gpio_pin_set(pin_number);     // Drive CS high (inactive)
-}
-
-static void spi_write_dac1(uint8_t *tx_data, uint8_t *rx_data) {
-    // Select DAC1
-    cs_select(DAC1_CS_PIN);
-    
-    // Prepare transfer descriptor
-    nrfx_spim_xfer_desc_t xfer_desc = NRFX_SPIM_XFER_TRX(tx_data, DAC_TX_LEN, rx_data, DAC_RX_LEN);
-    
-    // Perform the transfer
-    nrfx_err_t err = nrfx_spim_xfer(&spim_inst, &xfer_desc, 0);
-    if(err != NRFX_SUCCESS){
-        printf("SPI ERROR\n");
-    }
-    cs_deselect(DAC1_CS_PIN);
-}
-
-static void spi_write_dac2(uint8_t *tx_data, uint8_t *rx_data) {
-    // Select DAC1
-    cs_select(DAC2_CS_PIN);
-    
-    // Prepare transfer descriptor
-    nrfx_spim_xfer_desc_t xfer_desc = NRFX_SPIM_XFER_TRX(tx_data, DAC_TX_LEN, rx_data, DAC_RX_LEN);
-    
-    // Perform the transfer
-    nrfx_err_t err = nrfx_spim_xfer(&spim_inst, &xfer_desc, 0);
-    if(err != NRFX_SUCCESS){
-        printf("SPI ERROR\n");
-    }
-    cs_deselect(DAC2_CS_PIN);
-}
 
 static void timer_handler(nrf_timer_event_t event_type, void * p_context)
 {   
@@ -208,12 +149,6 @@ static void timer_handler(nrf_timer_event_t event_type, void * p_context)
     }
 }
 
-static void spim_handler(nrfx_spim_evt_t const * p_event, void * p_context){
-    if (p_event->type == NRFX_SPIM_EVENT_DONE){
-        printf("Message received: %s\n", p_event->xfer_desc.p_rx_buffer);
-    }
-}
-
 static void init_misc_pins(void) {
     // Configure P0.16 as output (DAC1 CS)
     nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(0, 16));
@@ -231,24 +166,6 @@ static void init_misc_pins(void) {
 
     nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(1, 1));
     nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 1)); // set low
-}
-
-static void spi_init(){
-    nrfx_spim_config_t spim_config = NRFX_SPIM_DEFAULT_CONFIG(SCK_PIN,
-                                                              MOSI_PIN,
-                                                              MISO_PIN,
-                                                              NRF_SPIM_PIN_NOT_CONNECTED);
-
-    spim_config.frequency = 8000000;
-    nrfx_err_t status = nrfx_spim_init(&spim_inst, &spim_config, spim_handler, NULL);
-    if (status == NRFX_SUCCESS) {
-        printf("SPI initialized successfully on SPIM%d\n", SPIM_INST_IDX);
-        printf("  SCK: P%d.%02d\n", (SCK_PIN >> 5), (SCK_PIN & 0x1F));
-        printf("  MOSI: P%d.%02d\n", (MOSI_PIN >> 5), (MOSI_PIN & 0x1F)); 
-        printf("  MISO: P%d.%02d\n", (MISO_PIN >> 5), (MISO_PIN & 0x1F));
-    } else {
-        printf("SPI initialization failed with error: %d\n", status);
-    }
 }
 
 static void timer_init(nrfx_timer_t timer_inst){
