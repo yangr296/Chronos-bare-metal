@@ -19,4 +19,9 @@ void cs_deselect(uint32_t pin_number);
 void spi_write_dac1(uint8_t *tx_data, uint8_t *rx_data);
 void spi_write_dac2(uint8_t *tx_data, uint8_t *rx_data);
 void spi_init();
+
+extern uint8_t dac1_buf_rx[DAC_RX_LEN];
+extern uint8_t dac1_buf_tx[DAC_TX_LEN];
+extern uint8_t dac2_buf_rx[DAC_RX_LEN];
+extern uint8_t dac2_buf_tx[DAC_TX_LEN]; 
 #endif

@@ -6,6 +6,10 @@
 
 static nrfx_spim_t spim_inst = NRFX_SPIM_INSTANCE(SPIM_INST_IDX);
 static void spim_handler(nrfx_spim_evt_t const * p_event, void * p_context);
+uint8_t dac1_buf_tx[DAC_TX_LEN] = {0x52, 0x53};
+uint8_t dac2_buf_tx[DAC_TX_LEN] = {0x54, 0x55};
+uint8_t dac1_buf_rx[DAC_RX_LEN];
+uint8_t dac2_buf_rx[DAC_RX_LEN];
 
 void cs_select(uint32_t pin_number) {
     nrf_gpio_pin_clear(pin_number);  // Drive CS low (active)
@@ -18,7 +22,7 @@ void cs_deselect(uint32_t pin_number) {
 void spi_write_dac1(uint8_t *tx_data, uint8_t *rx_data) {
     // Select DAC1
     cs_select(DAC1_CS_PIN);
-    
+    memset(rx_data, 0, DAC_RX_LEN); // Clear RX buffer
     // Prepare transfer descriptor
     nrfx_spim_xfer_desc_t xfer_desc = NRFX_SPIM_XFER_TRX(tx_data, DAC_TX_LEN, rx_data, DAC_RX_LEN);
     
@@ -33,7 +37,7 @@ void spi_write_dac1(uint8_t *tx_data, uint8_t *rx_data) {
 void spi_write_dac2(uint8_t *tx_data, uint8_t *rx_data) {
     // Select DAC1
     cs_select(DAC2_CS_PIN);
-    
+    memset(rx_data, 0, DAC_RX_LEN); // Clear RX buffer
     // Prepare transfer descriptor
     nrfx_spim_xfer_desc_t xfer_desc = NRFX_SPIM_XFER_TRX(tx_data, DAC_TX_LEN, rx_data, DAC_RX_LEN);
     
@@ -64,7 +68,7 @@ void spi_init(){
 
 static void spim_handler(nrfx_spim_evt_t const * p_event, void * p_context){
     if (p_event->type == NRFX_SPIM_EVENT_DONE){
-        printf("Message received: %s\n", p_event->xfer_desc.p_rx_buffer);
+        printf("Message received: %02X\n", p_event->xfer_desc.p_rx_buffer);
     }
 }
 

@@ -8,4 +8,5 @@ project(bm_timer)
 GET_DEVICE_CONFIG_FILES(${BOARD} ./boards)
 target_sources(app PRIVATE 
 src/main.c
-src/spi.c)
+src/spi.c
+src/timer.c)
