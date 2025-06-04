@@ -1,0 +1,37 @@
+/*
+ * Network Core Device Tree Overlay
+ * This configures hardware resources for the Bluetooth controller
+ * Path: child_image/ipc_radio/boards/nrf5340dk_nrf5340_cpunet.overlay
+ */
+
+/* 
+ * IPC configuration for network core side
+ * This must match the application core's IPC setup
+ */
+&ipc0 {
+    status = "okay";
+};
+
+/*
+ * Shared memory region for IPC communication
+ * The network core accesses the same shared memory as the app core
+ */
+&sram0_shared {
+    status = "okay";
+};
+
+/*
+ * Clock configuration
+ * The network core needs proper clock setup for Bluetooth timing
+ */
+&clock {
+    status = "okay";
+};
+
+/*
+ * Radio peripheral for Bluetooth
+ * This is the actual radio hardware used by the controller
+ */
+&radio {
+    status = "okay";
+};
