@@ -1,63 +1,45 @@
 /*
- * This file is created to fulfill the requirement of a pinctrl-N
- * property for nodes in the specific target overlay file.
- *
- * In the current implementation of samples, the specific peripheral
- * driver instance is initialized at runtime with a configuration
- * based on pin symbols defined in `nrfx_example.h`.
- *
- * To use values from specific property nodes from the device tree,
- * appropriate values for the `psels` property must be provided
- * instead of the dummy values defined in that file. Once done, these values
- * can be accessed from the device tree through using the API implemented in
- * `<zephyr/devicetree.h>` (see Zephyr’s doc: Devicetree access from C/C++).
- *
- * Here is a sample of extracting node `psels` values to initialize a peripheral
- * driver instance with a configuration based on those values:
- *
- * #define SPI_NODE DT_NODELABEL(spi1)
- * #define SPI_PINCTRL_NODE DT_CHILD(DT_PINCTRL_0(SPI_NODE, 0), group1)
- * #define SCK_PIN (DT_PROP_BY_IDX(SPI_PINCTRL_NODE, psels, 0) & 0x3F)
- * #define MISO_PIN (DT_PROP_BY_IDX(SPI_PINCTRL_NODE, psels, 1) & 0x3F)
- * #define MOSI_PIN (DT_PROP_BY_IDX(SPI_PINCTRL_NODE, psels, 2) & 0x3F)
+ * Pin control configuration for chronos-ble-uart project
+ * This file defines how pins are multiplexed for different peripherals
+ * 
+ * Pin assignments based on your main.c:
+ * - SPI: SCK=P1.02, MOSI=P0.07, MISO=P0.25
+ * - DAC1 CS: P0.16
+ * - DAC2 CS: P0.26
+ * - Control pins: P1.00, P1.01, P1.03
  */
 
 &pinctrl {
-    spi_dummy: spi_dummy {
-        group1 {
-            psels = <NRF_PSEL(SPIM_SCK, 0, 0)>,
-                <NRF_PSEL(SPIM_MISO, 0, 0)>,
-                <NRF_PSEL(SPIM_MOSI, 0, 0)>;
-        };
-    };
-
+    /* SPI Master configuration - matching your main.c */
     spi_master_default: spi_master_default {
         group1 {
-            psels = <NRF_PSEL(SPIM_SCK, 0, 0)>,
-                <NRF_PSEL(SPIM_MISO, 0, 0)>,
-                <NRF_PSEL(SPIM_MOSI, 0, 0)>;
+            psels = <NRF_PSEL(SPIM_SCK, 1, 2)>,    /* P1.02 for SCK */
+                    <NRF_PSEL(SPIM_MISO, 0, 25)>,  /* P0.25 for MISO */
+                    <NRF_PSEL(SPIM_MOSI, 0, 7)>;    /* P0.07 for MOSI */
         };
     };
 
-    spi_slave_dummy: spi_slave_dummy {
+    /* UART pins for BLE NUS service */
+    uart0_default: uart0_default {
         group1 {
-            psels = <NRF_PSEL(SPIM_SCK, 0, 0)>,
-                <NRF_PSEL(SPIM_MISO, 0, 0)>,
-                <NRF_PSEL(SPIM_MOSI, 0, 0)>;
+            psels = <NRF_PSEL(UART_TX, 0, 6)>,     /* P0.06 - default TX pin */
+                    <NRF_PSEL(UART_RX, 0, 8)>;      /* P0.08 - default RX pin */
         };
     };
 
-    i2c_master_dummy: i2c_master_dummy {
+    uart0_sleep: uart0_sleep {
         group1 {
-            psels = <NRF_PSEL(TWIM_SDA, 0, 0)>,
-                <NRF_PSEL(TWIM_SCL, 0, 0)>;
+            psels = <NRF_PSEL(UART_TX, 0, 6)>,
+                    <NRF_PSEL(UART_RX, 0, 8)>;
+            low-power-enable;
         };
     };
 
-    i2c_slave_dummy: i2c_slave_dummy {
+    /* I2C configurations - keeping for future use */
+    i2c_master_default: i2c_master_default {
         group1 {
-            psels = <NRF_PSEL(TWIM_SDA, 0, 0)>,
-                <NRF_PSEL(TWIM_SCL, 0, 0)>;
+            psels = <NRF_PSEL(TWIM_SDA, 0, 4)>,    /* Example pins */
+                    <NRF_PSEL(TWIM_SCL, 0, 3)>;
         };
     };
 };

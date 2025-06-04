@@ -1,0 +1,87 @@
+# Merged Kconfig for chronos-ble-uart project
+# This provides menuconfig options for both timing control and BLE features
+
+source "Kconfig.zephyr"
+
+menu "Chronos BLE UART Configuration"
+
+# BLE UART Service Configuration (from peripheral_uart)
+config BT_NUS_THREAD_STACK_SIZE
+	int "BLE UART thread stack size"
+	default 1024
+	help
+	  Stack size used in each of the two threads handling BLE UART communication
+
+config BT_NUS_UART_BUFFER_SIZE
+	int "UART payload buffer element size"
+	default 40
+	help
+	  Size of the payload buffer in each RX and TX FIFO element
+	  Increase this if you need to send larger chunks of data
+
+config BT_NUS_SECURITY_ENABLED
+	bool "Enable BLE security"
+	default y
+	select BT_SMP
+	help
+	  Enable BLE security for the UART service
+	  This includes pairing and bonding support
+
+config BT_NUS_UART_RX_WAIT_TIME
+	int "Timeout for UART RX complete event"
+	default 50000
+	help
+	  Wait for RX complete event time in microseconds
+
+# Chronos Timing Control Configuration (new section)
+menu "Timing Control Configuration"
+
+config CHRONOS_STIM_TIMER_US
+	int "Stimulation timer period (microseconds)"
+	default 4000000
+	help
+	  Time between stimulation events in microseconds
+	  Default is 4 seconds (4000000 us)
+
+config CHRONOS_EVENT1_OFFSET_US
+	int "Event 1 offset from main event (microseconds)"
+	default 1000000
+	help
+	  Time delay for first event after main stimulation
+
+config CHRONOS_EVENT2_OFFSET_US
+	int "Event 2 offset from event 1 (microseconds)"
+	default 1000000
+	help
+	  Time delay for second event after event 1
+
+config CHRONOS_EVENT3_OFFSET_US
+	int "Event 3 offset from event 2 (microseconds)"
+	default 1000000
+	help
+	  Time delay for third event after event 2
+
+config CHRONOS_USE_PPI
+	bool "Use PPI for hardware-timed events"
+	default n
+	help
+	  Use Programmable Peripheral Interconnect for precise timing
+	  This reduces CPU involvement and improves timing accuracy
+
+endmenu # Timing Control Configuration
+
+# Storage configuration (auto-selected based on hardware)
+config SETTINGS
+	default y
+
+config ZMS
+	default y if (SOC_FLASH_NRF_RRAM || SOC_FLASH_NRF_MRAM)
+	help
+	  Use Zephyr Memory Storage for newer flash types
+
+config NVS
+	default y if !(SOC_FLASH_NRF_RRAM || SOC_FLASH_NRF_MRAM)
+	help
+	  Use Non-Volatile Storage for traditional flash
+
+endmenu # Chronos BLE UART Configuration
