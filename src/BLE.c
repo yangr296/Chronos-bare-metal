@@ -44,7 +44,9 @@ struct bt_conn *current_conn;
 struct bt_conn *auth_conn;
 static K_FIFO_DEFINE(fifo_uart_tx_data);
 static K_FIFO_DEFINE(fifo_uart_rx_data);
-
+uint8_t ble_received_data[BLE_DATA_BUFFER_SIZE];
+uint16_t ble_data_length = 0;
+bool ble_data_ready = false;
 
 void uart_work_handler(struct k_work *item)
 {
@@ -281,47 +283,19 @@ void error(void)
 void bt_receive_cb(struct bt_conn *conn, const uint8_t *const data,
 			  uint16_t len)
 {
+    // Store the data
+    if (len <= BLE_DATA_BUFFER_SIZE) {
+        memcpy(ble_received_data, data, len);
+        ble_data_length = len;
+        ble_data_ready = true;
+    }
+
 	int err;
 	char addr[BT_ADDR_LE_STR_LEN] = {0};
 
 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, ARRAY_SIZE(addr));
 
-	LOG_INF("Received data from: %s", addr);
-
-	for (uint16_t pos = 0; pos != len;) {
-		struct uart_data_t *tx = k_malloc(sizeof(*tx));
-
-		if (!tx) {
-			LOG_WRN("Not able to allocate UART send data buffer");
-			return;
-		}
-
-		/* Keep the last byte of TX buffer for potential LF char. */
-		size_t tx_data_size = sizeof(tx->data) - 1;
-
-		if ((len - pos) > tx_data_size) {
-			tx->len = tx_data_size;
-		} else {
-			tx->len = (len - pos);
-		}
-
-		memcpy(tx->data, &data[pos], tx->len);
-
-		pos += tx->len;
-
-		/* Append the LF character when the CR character triggered
-		 * transmission from the peer.
-		 */
-		if ((pos == len) && (data[len - 1] == '\r')) {
-			tx->data[tx->len] = '\n';
-			tx->len++;
-		}
-
-		err = uart_tx(uart, tx->data, tx->len, SYS_FOREVER_MS);
-		if (err) {
-			k_fifo_put(&fifo_uart_tx_data, tx);
-		}
-	}
+	LOG_INF("Received data from: %s: %X", addr, ble_received_data);
 }
 
 void uart_cb(const struct device *dev, struct uart_event *evt, void *user_data)
