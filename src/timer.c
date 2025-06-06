@@ -3,6 +3,7 @@
 #include <zephyr/device.h>
 #include "timer.h"
 #include "spi.h"
+#include "config.h"
 
 static uint32_t timer_freq_hz = 0;  
 static uint32_t main_event_time = 0;
@@ -77,29 +78,32 @@ static void timer_handler(nrf_timer_event_t event_type, void * p_context)
     uint32_t current_time;
     uint32_t current_max;
     uint32_t my_error;
+    uint32_t elapsed1_ticks;
     
     switch(event_type) {
         case NRF_TIMER_EVENT_COMPARE0:
-            current_time = nrfx_timer_capture(&measurement_timer, NRF_TIMER_CC_CHANNEL0);
-                
-            if (prev_main_event_time > 0) {
-                // Calculate actual interval duration
-                uint32_t interval_ticks = current_time - prev_main_event_time;
-                uint32_t expected_ticks = nrfx_timer_us_to_ticks(&measurement_timer, STIM_TIMER);
-                uint32_t event0_error = abs(interval_ticks - expected_ticks);
-                
-                // Update statistics
-                atomic_add(&event0_error_counter, event0_error);
-                
-                // Track maximum error
-                current_max = atomic_get(&event0_error_max);
-                if (event0_error > current_max) {
-                    atomic_set(&event0_error_max, event0_error);
+            if(MEASURE_TIMER == 1){
+                current_time = nrfx_timer_capture(&measurement_timer, NRF_TIMER_CC_CHANNEL0);
+                    
+                if (prev_main_event_time > 0) {
+                    // Calculate actual interval duration
+                    uint32_t interval_ticks = current_time - prev_main_event_time;
+                    uint32_t expected_ticks = nrfx_timer_us_to_ticks(&measurement_timer, STIM_TIMER);
+                    uint32_t event0_error = abs(interval_ticks - expected_ticks);
+                    
+                    // Update statistics
+                    atomic_add(&event0_error_counter, event0_error);
+                    
+                    // Track maximum error
+                    current_max = atomic_get(&event0_error_max);
+                    if (event0_error > current_max) {
+                        atomic_set(&event0_error_max, event0_error);
+                    }
                 }
+                prev_main_event_time = current_time;
+                // Capture timestamp when main event occurs (after timer reset)
+                main_event_time = nrfx_timer_capture(timer_inst, NRF_TIMER_CC_CHANNEL4);
             }
-            prev_main_event_time = current_time;
-            // Capture timestamp when main event occurs (after timer reset)
-            main_event_time = nrfx_timer_capture(timer_inst, NRF_TIMER_CC_CHANNEL4);
 
             // Switch on 1.03
             nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(1, 3));
@@ -109,15 +113,17 @@ static void timer_handler(nrf_timer_event_t event_type, void * p_context)
             break;
             
         case NRF_TIMER_EVENT_COMPARE1:
-            // Capture timestamp when event 1 occurs
-            current_time = nrfx_timer_capture(timer_inst, NRF_TIMER_CC_CHANNEL4);
-            // Calculate elapsed time from main event
-            uint32_t elapsed1_ticks = current_time - main_event_time;
-            my_error = abs(elapsed1_ticks-EVENT1_OFFSET_US*timer_freq_hz/1000000);
-            atomic_add(&error,my_error);
-            current_max = atomic_get(&event1_error_max);
-            if (my_error > current_max) {atomic_set(&event1_error_max, my_error);}
-
+            if(MEASURE_TIMER == 1){
+                // Capture timestamp when event 1 occurs
+                current_time = nrfx_timer_capture(timer_inst, NRF_TIMER_CC_CHANNEL4);
+                // Calculate elapsed time from main event
+                elapsed1_ticks = current_time - main_event_time;
+                my_error = abs(elapsed1_ticks-EVENT1_OFFSET_US*timer_freq_hz/1000000);
+                atomic_add(&error,my_error);
+                current_max = atomic_get(&event1_error_max);
+                if (my_error > current_max) {atomic_set(&event1_error_max, my_error);}
+            }
+        
             // Switch off 1.03
             nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 3));
             // Switch on 1.00
@@ -128,14 +134,16 @@ static void timer_handler(nrf_timer_event_t event_type, void * p_context)
             break;
             
         case NRF_TIMER_EVENT_COMPARE2:
-            // Capture timestamp when event 2 occurs
-            current_time = nrfx_timer_capture(timer_inst, NRF_TIMER_CC_CHANNEL4);
-            // Calculate elapsed time from event 1
-            my_error = abs(elapsed1_ticks-EVENT2_OFFSET_US*timer_freq_hz/1000000);
-            atomic_add(&error, my_error);
-            current_max = atomic_get(&event2_error_max);
-            if (my_error > current_max) {atomic_set(&event2_error_max, my_error);}
-
+            if(MEASURE_TIMER == 1){
+                // Capture timestamp when event 2 occurs
+                current_time = nrfx_timer_capture(timer_inst, NRF_TIMER_CC_CHANNEL4);
+                // Calculate elapsed time from event 1
+                my_error = abs(elapsed1_ticks-EVENT2_OFFSET_US*timer_freq_hz/1000000);
+                atomic_add(&error, my_error);
+                current_max = atomic_get(&event2_error_max);
+                if (my_error > current_max) {atomic_set(&event2_error_max, my_error);}
+            }
+            
             // Switch on 1.03
             nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(1, 3));
             // SPI transaction on DAC2 
@@ -144,13 +152,16 @@ static void timer_handler(nrf_timer_event_t event_type, void * p_context)
             break;
             
         case NRF_TIMER_EVENT_COMPARE3:
-            // Capture timestamp when event 3 occurs
-            current_time = nrfx_timer_capture(timer_inst, NRF_TIMER_CC_CHANNEL4);
-            // Calculate elapsed time from event 2
-            my_error = abs(elapsed1_ticks-EVENT3_OFFSET_US*timer_freq_hz/1000000);
-            atomic_add(&error,my_error);
-            current_max = atomic_get(&event3_error_max);
-            if (my_error > current_max) {atomic_set(&event3_error_max, my_error);}
+            if(MEASURE_TIMER == 1){
+                // Capture timestamp when event 3 occurs
+                current_time = nrfx_timer_capture(timer_inst, NRF_TIMER_CC_CHANNEL4);
+                // Calculate elapsed time from event 2
+                my_error = abs(elapsed1_ticks-EVENT3_OFFSET_US*timer_freq_hz/1000000);
+                atomic_add(&error,my_error);
+                current_max = atomic_get(&event3_error_max);
+                if (my_error > current_max) {atomic_set(&event3_error_max, my_error);}
+            }
+            
             // Switch off 1.03
             nrf_gpio_pin_clear(NRF_GPIO_PIN_MAP(1, 3));
             // Switch on 1.00

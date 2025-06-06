@@ -40,9 +40,6 @@ extern const struct bt_data ad[];
 extern const struct bt_data sd[];
 extern const size_t ad_len;
 extern const size_t sd_len;
-#define BLE_DATA_BUFFER_SIZE 256
-extern uint8_t ble_received_data[BLE_DATA_BUFFER_SIZE];
-extern uint16_t ble_data_length;
 extern bool ble_data_ready;
 struct uart_data_t {
     void *fifo_reserved;

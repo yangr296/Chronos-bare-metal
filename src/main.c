@@ -41,6 +41,7 @@
 #include "BLE.h"
 #include "spi.h"
 #include "timer.h"
+#include "config.h"
 
 LOG_MODULE_REGISTER(mymain, LOG_LEVEL_DBG);
 static void init_clock();
@@ -141,20 +142,22 @@ int main(void)
 		dk_set_led(RUN_STATUS_LED, (++blink_status) % 2);
 		//k_sleep(K_MSEC(RUN_LED_BLINK_INTERVAL));
         k_msleep(10000);
-        experiment_counter += 10;
-        error_data my_error_data;
-        get_error_data(&my_error_data);
-        printf("Counter: %i Elapsed: %is\nEvent0 running error: %lu avg error: %lu max error: %lu\nEvents1-3 running error: %lu avg error: %lu max error: %lu, %lu, %lu\n", 
-               my_error_data.mycounter, 
-               experiment_counter,
-               my_error_data.event0_error,
-               (my_error_data.event0_error/my_error_data.mycounter), 
-               my_error_data.event0_max,
-               my_error_data.myerror,
-               (my_error_data.myerror/my_error_data.mycounter),
-               my_error_data.event1_max,
-               my_error_data.event2_max,
-               my_error_data.event3_max);
+        if(MEASURE_TIMER ==1){
+            experiment_counter += 10;
+            error_data my_error_data;
+            get_error_data(&my_error_data);
+            printf("Counter: %i Elapsed: %is\nEvent0 running error: %lu avg error: %lu max error: %lu\nEvents1-3 running error: %lu avg error: %lu max error: %lu, %lu, %lu\n", 
+                my_error_data.mycounter, 
+                experiment_counter,
+                my_error_data.event0_error,
+                (my_error_data.event0_error/my_error_data.mycounter), 
+                my_error_data.event0_max,
+                my_error_data.myerror,
+                (my_error_data.myerror/my_error_data.mycounter),
+                my_error_data.event1_max,
+                my_error_data.event2_max,
+                my_error_data.event3_max);
+        }
 	}
 }
 

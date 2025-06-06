@@ -3,6 +3,7 @@
 #include <zephyr/device.h>
 #include <hal/nrf_gpio.h>
 #include "spi.h"
+#include "config.h"
 
 static nrfx_spim_t spim_inst = NRFX_SPIM_INSTANCE(SPIM_INST_IDX);
 static void spim_handler(nrfx_spim_evt_t const * p_event, void * p_context);
@@ -67,7 +68,7 @@ void spi_init(){
 }
 
 static void spim_handler(nrfx_spim_evt_t const * p_event, void * p_context){
-    if (p_event->type == NRFX_SPIM_EVENT_DONE){
+    if ((p_event->type == NRFX_SPIM_EVENT_DONE)&& (SPI_VERBOSE == 1)){
         printf("Message received: %02X\n", p_event->xfer_desc.p_rx_buffer);
     }
 }

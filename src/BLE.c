@@ -25,6 +25,7 @@
 
 #include <zephyr/logging/log.h>
 #include "BLE.h"
+#include "data.h"
 
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 K_SEM_DEFINE(ble_init_ok, 0, 1);
@@ -44,8 +45,6 @@ struct bt_conn *current_conn;
 struct bt_conn *auth_conn;
 static K_FIFO_DEFINE(fifo_uart_tx_data);
 static K_FIFO_DEFINE(fifo_uart_rx_data);
-uint8_t ble_received_data[BLE_DATA_BUFFER_SIZE];
-uint16_t ble_data_length = 0;
 bool ble_data_ready = false;
 
 void uart_work_handler(struct k_work *item)
@@ -290,6 +289,7 @@ void bt_receive_cb(struct bt_conn *conn, const uint8_t *const data,
         ble_data_ready = true;
     }
 
+    process_received_data(&settings, ble_received_data, ble_data_length);
 	int err;
 	char addr[BT_ADDR_LE_STR_LEN] = {0};
 
