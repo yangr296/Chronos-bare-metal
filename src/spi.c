@@ -11,6 +11,21 @@ uint8_t dac1_buf_tx[DAC_TX_LEN] = {0x52, 0x53};
 uint8_t dac2_buf_tx[DAC_TX_LEN] = {0x54, 0x55};
 uint8_t dac1_buf_rx[DAC_RX_LEN];
 uint8_t dac2_buf_rx[DAC_RX_LEN];
+void update_dac1_amplitude(uint16_t amplitude) {
+    dac1_buf_tx[0] = (amplitude >> 8) & 0xFF;  // MSB
+    dac1_buf_tx[1] = amplitude & 0xFF;         // LSB
+    
+    printf("DAC1 amplitude updated to %u (0x%02X 0x%02X)\n", 
+           amplitude, dac1_buf_tx[0], dac1_buf_tx[1]);
+}
+
+void update_dac2_amplitude(uint16_t amplitude) {
+    dac2_buf_tx[0] = (amplitude >> 8) & 0xFF;  // MSB
+    dac2_buf_tx[1] = amplitude & 0xFF;         // LSB
+    
+    printf("DAC2 amplitude updated to %u (0x%02X 0x%02X)\n", 
+           amplitude, dac2_buf_tx[0], dac2_buf_tx[1]);
+}
 
 void cs_select(uint32_t pin_number) {
     nrf_gpio_pin_clear(pin_number);  // Drive CS low (active)
