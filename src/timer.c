@@ -21,6 +21,7 @@ static atomic_t event0_error_max;
 static uint32_t prev_main_event_time = 0;
 static nrfx_timer_t measurement_timer = NRFX_TIMER_INSTANCE(1); // Use a separate timer for measurements
 static nrfx_timer_t timer_inst = NRFX_TIMER_INSTANCE(TIMER_INST_IDX);; // Timer instance for the main timer
+static uint32_t current_period_us = STIM_TIMER;
 static void timer_handler(nrf_timer_event_t event_type, void * p_context);
 
 void get_error_data(error_data *data) {
@@ -31,6 +32,39 @@ void get_error_data(error_data *data) {
     data->event0_max = atomic_get(&event0_error_max);
     data->myerror = atomic_get(&error);
     data->mycounter = atomic_get(&counter);
+}
+
+void update_stim_frequency(uint16_t frequency_hz) {
+    if (frequency_hz == 0) {
+        printf("Invalid frequency: 0 Hz\n");
+        return;
+    }
+    
+    // Calculate period in microseconds from frequency in Hz
+    uint32_t period_us = 1000000 / frequency_hz;
+    current_period_us = period_us;
+    
+    // Convert to timer ticks
+    uint32_t period_ticks = nrfx_timer_us_to_ticks(&timer_inst, period_us);
+    
+    // Update channel 0 compare value
+    // Note: We keep the SHORT to clear on compare to maintain periodic operation
+    nrfx_timer_extended_compare(&timer_inst, NRF_TIMER_CC_CHANNEL0, period_ticks, 
+        NRF_TIMER_SHORT_COMPARE0_CLEAR_MASK, true);
+    // Also update the measurement timer expectations if needed
+    if (MEASURE_TIMER == 1) {
+        // Reset error counters when frequency changes
+        atomic_set(&event0_error_counter, 0);
+        atomic_set(&event0_error_max, 0);
+        atomic_set(&counter,0);            
+        atomic_set(&error,0);
+        atomic_set(&event1_error_max,0);
+        atomic_set(&event2_error_max,0);
+        atomic_set(&event3_error_max,0);
+    }
+    
+    printf("Timer frequency updated to %u Hz (period: %lu us, ticks: %lu)\n", 
+           frequency_hz, period_us, period_ticks);
 }
 
 void timer_init(){
@@ -51,6 +85,7 @@ void timer_init(){
     uint32_t event1_ticks = nrfx_timer_us_to_ticks(&timer_inst, EVENT1_OFFSET_US);
     uint32_t event2_ticks = nrfx_timer_us_to_ticks(&timer_inst, (EVENT1_OFFSET_US + EVENT2_OFFSET_US));
     uint32_t event3_ticks = nrfx_timer_us_to_ticks(&timer_inst, (EVENT1_OFFSET_US + EVENT2_OFFSET_US + EVENT3_OFFSET_US));
+    // set frequency of stimulation
     nrfx_timer_extended_compare(&timer_inst, NRF_TIMER_CC_CHANNEL0, 
                                 nrfx_timer_us_to_ticks(&timer_inst, STIM_TIMER),
                                 NRF_TIMER_SHORT_COMPARE0_CLEAR_MASK, true);

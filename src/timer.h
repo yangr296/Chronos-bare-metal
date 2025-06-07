@@ -29,4 +29,5 @@ typedef struct {
 void timer_init();
 void get_error_data(error_data *data);
 nrfx_timer_t measurement_timer_init();
+void update_stim_frequency(uint16_t frequency_hz);
 #endif
