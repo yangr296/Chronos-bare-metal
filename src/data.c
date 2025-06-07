@@ -22,6 +22,11 @@ void process_received_data(stim_setting *settings, uint8_t *ble_received_data, u
         } else {
             printf("Warning: Received frequency is 0 Hz, timer not updated\n");
         }
+        if (settings->pulse_width > 0) {
+            update_pulse_width(settings->pulse_width);
+        } else {
+            printf("Warning: Received pulse width is 0 us, pulse width not updated\n");
+        }
     } else {
         printf("Received data length mismatch: expected %zu, got %u\n",
                sizeof(stim_setting), ble_data_length);

@@ -21,7 +21,8 @@ static atomic_t event0_error_max;
 static uint32_t prev_main_event_time = 0;
 static nrfx_timer_t measurement_timer = NRFX_TIMER_INSTANCE(1); // Use a separate timer for measurements
 static nrfx_timer_t timer_inst = NRFX_TIMER_INSTANCE(TIMER_INST_IDX);; // Timer instance for the main timer
-static uint32_t current_period_us = STIM_TIMER;
+static uint32_t current_period_us = DEFAULT_STIM_PERIOD;
+static uint32_t current_pulse_width_us = DEFAULT_PULSE_WIDTH;
 static void timer_handler(nrf_timer_event_t event_type, void * p_context);
 
 void get_error_data(error_data *data) {
@@ -67,6 +68,38 @@ void update_stim_frequency(uint16_t frequency_hz) {
            frequency_hz, period_us, period_ticks);
 }
 
+void update_pulse_width(uint16_t pulse_width_us) {
+    if (pulse_width_us == 0) {
+        printf("Invalid pulse width: 0 us\n");
+        return;
+    }
+    
+    current_pulse_width_us = pulse_width_us;
+    
+    // Calculate new positions for channels 1 and 3
+    // Channel 1: pulse_width after channel 0 (end of first pulse)
+    uint32_t channel1_ticks = nrfx_timer_us_to_ticks(&timer_inst, pulse_width_us);
+    
+    // Channel 2 stays at its current position
+    uint32_t channel2_us = pulse_width_us + SWITCH_PERIOD;
+    uint32_t channel2_ticks = nrfx_timer_us_to_ticks(&timer_inst, channel2_us);
+    
+    // Channel 3: pulse_width after channel 2 (end of second pulse)
+    uint32_t channel3_us = channel2_us + pulse_width_us;
+    uint32_t channel3_ticks = nrfx_timer_us_to_ticks(&timer_inst, channel3_us);
+    
+    // Update the compare values
+    nrfx_timer_compare(&timer_inst, NRF_TIMER_CC_CHANNEL1, channel1_ticks, true);
+    nrfx_timer_compare(&timer_inst, NRF_TIMER_CC_CHANNEL3, channel3_ticks, true);
+    
+    // Also need to make sure channel 2 is still at the right position
+    nrfx_timer_compare(&timer_inst, NRF_TIMER_CC_CHANNEL2, channel2_ticks, true);
+    
+    printf("Pulse width updated to %u us (ticks: %lu)\n", pulse_width_us, channel1_ticks);
+    printf("Channel 1 at %u us, Channel 2 at %lu us, Channel 3 at %lu us\n", 
+           pulse_width_us, channel2_us, channel3_us);
+}
+
 void timer_init(){
     atomic_set(&counter, 0);
     atomic_set(&error,0);
@@ -82,12 +115,12 @@ void timer_init(){
     if(status != NRFX_SUCCESS){
         printf("Timer initialization failed with error: %d\n", status);
     }
-    uint32_t event1_ticks = nrfx_timer_us_to_ticks(&timer_inst, EVENT1_OFFSET_US);
-    uint32_t event2_ticks = nrfx_timer_us_to_ticks(&timer_inst, (EVENT1_OFFSET_US + EVENT2_OFFSET_US));
-    uint32_t event3_ticks = nrfx_timer_us_to_ticks(&timer_inst, (EVENT1_OFFSET_US + EVENT2_OFFSET_US + EVENT3_OFFSET_US));
+    uint32_t event1_ticks = nrfx_timer_us_to_ticks(&timer_inst, DEFAULT_PULSE_WIDTH);
+    uint32_t event2_ticks = nrfx_timer_us_to_ticks(&timer_inst, (DEFAULT_PULSE_WIDTH + SWITCH_PERIOD));
+    uint32_t event3_ticks = nrfx_timer_us_to_ticks(&timer_inst, (2*DEFAULT_PULSE_WIDTH + SWITCH_PERIOD));
     // set frequency of stimulation
     nrfx_timer_extended_compare(&timer_inst, NRF_TIMER_CC_CHANNEL0, 
-                                nrfx_timer_us_to_ticks(&timer_inst, STIM_TIMER),
+                                nrfx_timer_us_to_ticks(&timer_inst, DEFAULT_STIM_PERIOD),
                                 NRF_TIMER_SHORT_COMPARE0_CLEAR_MASK, true);
     nrfx_timer_extended_compare(&timer_inst, NRF_TIMER_CC_CHANNEL1, event1_ticks, 0, true);
     nrfx_timer_extended_compare(&timer_inst, NRF_TIMER_CC_CHANNEL2, event2_ticks, 0, true);
@@ -123,7 +156,7 @@ static void timer_handler(nrf_timer_event_t event_type, void * p_context)
                 if (prev_main_event_time > 0) {
                     // Calculate actual interval duration
                     uint32_t interval_ticks = current_time - prev_main_event_time;
-                    uint32_t expected_ticks = nrfx_timer_us_to_ticks(&measurement_timer, STIM_TIMER);
+                    uint32_t expected_ticks = nrfx_timer_us_to_ticks(&measurement_timer, DEFAULT_STIM_PERIOD);
                     uint32_t event0_error = abs(interval_ticks - expected_ticks);
                     
                     // Update statistics
@@ -153,7 +186,7 @@ static void timer_handler(nrf_timer_event_t event_type, void * p_context)
                 current_time = nrfx_timer_capture(timer_inst, NRF_TIMER_CC_CHANNEL4);
                 // Calculate elapsed time from main event
                 elapsed1_ticks = current_time - main_event_time;
-                my_error = abs(elapsed1_ticks-EVENT1_OFFSET_US*timer_freq_hz/1000000);
+                my_error = abs(elapsed1_ticks-DEFAULT_PULSE_WIDTH*timer_freq_hz/1000000);
                 atomic_add(&error,my_error);
                 current_max = atomic_get(&event1_error_max);
                 if (my_error > current_max) {atomic_set(&event1_error_max, my_error);}
@@ -173,7 +206,7 @@ static void timer_handler(nrf_timer_event_t event_type, void * p_context)
                 // Capture timestamp when event 2 occurs
                 current_time = nrfx_timer_capture(timer_inst, NRF_TIMER_CC_CHANNEL4);
                 // Calculate elapsed time from event 1
-                my_error = abs(elapsed1_ticks-EVENT2_OFFSET_US*timer_freq_hz/1000000);
+                my_error = abs(elapsed1_ticks-SWITCH_PERIOD*timer_freq_hz/1000000);
                 atomic_add(&error, my_error);
                 current_max = atomic_get(&event2_error_max);
                 if (my_error > current_max) {atomic_set(&event2_error_max, my_error);}
@@ -191,7 +224,7 @@ static void timer_handler(nrf_timer_event_t event_type, void * p_context)
                 // Capture timestamp when event 3 occurs
                 current_time = nrfx_timer_capture(timer_inst, NRF_TIMER_CC_CHANNEL4);
                 // Calculate elapsed time from event 2
-                my_error = abs(elapsed1_ticks-EVENT3_OFFSET_US*timer_freq_hz/1000000);
+                my_error = abs(elapsed1_ticks-DEFAULT_PULSE_WIDTH*timer_freq_hz/1000000);
                 atomic_add(&error,my_error);
                 current_max = atomic_get(&event3_error_max);
                 if (my_error > current_max) {atomic_set(&event3_error_max, my_error);}
