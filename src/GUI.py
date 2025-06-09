@@ -5,11 +5,25 @@ import threading
 import struct
 from bleak import BleakClient, BleakScanner
 import logging
+import D2B
 # install tkinter and bleak if not already installed
 # Nordic UART Service UUIDs
 NUS_SERVICE_UUID = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
 NUS_RX_CHAR_UUID = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"  # Write to device
 NUS_TX_CHAR_UUID = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"  # Read from device
+################################################################################
+# DAC8832(Texas Instruments) info:
+# Biopolar mode 
+# (MSB)1111 1111 1111 1111 = +V_REF * (32,767 / 32,768)
+# (MSB)1000 0000 0000 0000 = +V_REF * (1 / 32,768)
+# (MSB)1000 0000 0000 0000 = 0V
+# (MSB)0111 1111 1111 1111 = -V_REF * (1 / 32,768)
+# (MSB)0000 0000 0000 0000 = -V_REF * (32,767 / 32,768)
+################################################################################
+# LT1990-10 (Analog Devices) info:
+# I = 10 * V_DAC / R_SENSE
+# R_SESNSE = 100 Ohm
+################################################################################
 
 class NordicBLEGUI:
     def __init__(self, root):
@@ -58,7 +72,7 @@ class NordicBLEGUI:
         self.dac_var = tk.StringVar(value="1000")
         self.dac_entry = ttk.Entry(params_frame, textvariable=self.dac_var, width=10)
         self.dac_entry.grid(row=0, column=1, sticky=tk.W, padx=(5, 0))
-        ttk.Label(params_frame, text="(0-65535)").grid(row=0, column=2, sticky=tk.W, padx=(5, 0))
+        ttk.Label(params_frame, text=f"μA(-{D2B.MAX_CURRENT}-{D2B.MAX_CURRENT})").grid(row=0, column=2, sticky=tk.W, padx=(5, 0))
         
         # Pulse Width
         ttk.Label(params_frame, text="Pulse Width:").grid(row=1, column=0, sticky=tk.W, pady=2)
