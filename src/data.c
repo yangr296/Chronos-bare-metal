@@ -29,7 +29,6 @@ void process_received_data(stim_setting *settings, uint8_t *ble_received_data, u
             printf("Warning: Received pulse width is 0 us, pulse width not updated\n");
         }
         update_dac1_amplitude(settings->DAC_amplitude);
-        //! This doesn't negate the amplitude yet
         update_dac2_amplitude(settings->DAC_amplitude);
     } else {
         printf("Received data length mismatch: expected %zu, got %u\n",

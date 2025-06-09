@@ -11,19 +11,6 @@ import D2B
 NUS_SERVICE_UUID = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
 NUS_RX_CHAR_UUID = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"  # Write to device
 NUS_TX_CHAR_UUID = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"  # Read from device
-################################################################################
-# DAC8832(Texas Instruments) info:
-# Biopolar mode 
-# (MSB)1111 1111 1111 1111 = +V_REF * (32,767 / 32,768)
-# (MSB)1000 0000 0000 0000 = +V_REF * (1 / 32,768)
-# (MSB)1000 0000 0000 0000 = 0V
-# (MSB)0111 1111 1111 1111 = -V_REF * (1 / 32,768)
-# (MSB)0000 0000 0000 0000 = -V_REF * (32,767 / 32,768)
-################################################################################
-# LT1990-10 (Analog Devices) info:
-# I = 10 * V_DAC / R_SENSE
-# R_SESNSE = 100 Ohm
-################################################################################
 
 class NordicBLEGUI:
     def __init__(self, root):
@@ -252,14 +239,14 @@ class NordicBLEGUI:
             frequency = int(self.freq_var.get())
             
             if not (0 <= dac_amp <= 65535):
-                raise ValueError("DAC amplitude must be 0-65535")
+                raise ValueError(f"DAC amplitude must be between {-D2B.MAX_CURRENT} and {D2B.MAX_CURRENT}")
             if not (0 <= pulse_width <= 65535):
                 raise ValueError("Pulse width must be 0-65535")
             if not (0 <= frequency <= 65535):
                 raise ValueError("Frequency must be 0-65535")
             
             # Pack data as little-endian uint16 values (matching C struct)
-            data = struct.pack('<HHH', dac_amp, pulse_width, frequency)
+            data = struct.pack('<HHH', D2B.decimal_to_binary(dac_amp), pulse_width, frequency)
             
             self.log_message(f"Sending: DAC={dac_amp}μA, Pulse={pulse_width}μs, Freq={frequency}Hz")
             

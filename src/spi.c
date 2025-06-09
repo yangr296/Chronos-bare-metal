@@ -20,11 +20,18 @@ void update_dac1_amplitude(uint16_t amplitude) {
 }
 
 void update_dac2_amplitude(uint16_t amplitude) {
-    dac2_buf_tx[0] = (amplitude >> 8) & 0xFF;  // MSB
-    dac2_buf_tx[1] = amplitude & 0xFF;         // LSB
+    uint16_t opposite_amplitude;
+    if (amplitude == 0x0000) {
+        opposite_amplitude = 0xFFFF;  // Most negative → Most positive
+    } else {
+        opposite_amplitude = (uint16_t)(0x10000UL - amplitude);
+    }
     
-    printf("DAC2 amplitude updated to %u (0x%02X 0x%02X)\n", 
-           amplitude, dac2_buf_tx[0], dac2_buf_tx[1]);
+    dac2_buf_tx[0] = (opposite_amplitude >> 8) & 0xFF;  // MSB
+    dac2_buf_tx[1] = opposite_amplitude & 0xFF;         // LSB
+    
+    printf("DAC2 amplitude updated to opposite of %u: %u (0x%02X 0x%02X)\n", 
+           amplitude, opposite_amplitude, dac2_buf_tx[0], dac2_buf_tx[1]);
 }
 
 void cs_select(uint32_t pin_number) {
