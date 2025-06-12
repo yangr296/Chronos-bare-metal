@@ -16,7 +16,7 @@ class NordicBLEGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Nordic BLE Control - Chronos")
-        self.root.geometry("400x500")
+        self.root.geometry("400x550")  # Increased height for new checkbox
         
         self.client = None
         self.connected = False
@@ -50,9 +50,27 @@ class NordicBLEGUI:
         # Configure column weights
         conn_frame.columnconfigure(0, weight=1)
         
+        # Control section
+        control_frame = ttk.LabelFrame(main_frame, text="Stimulation Control", padding="5")
+        control_frame.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
+        
+        # Start checkbox
+        self.start_var = tk.BooleanVar(value=False)
+        self.start_checkbox = ttk.Checkbutton(
+            control_frame, 
+            text="Enable Stimulation (DAC Output)", 
+            variable=self.start_var,
+            command=self.on_start_changed
+        )
+        self.start_checkbox.grid(row=0, column=0, sticky=tk.W, pady=(0, 5))
+        
+        # Status indicator for stimulation
+        self.stim_status_label = ttk.Label(control_frame, text="Status: STOPPED (DAC = 0V)", foreground="red")
+        self.stim_status_label.grid(row=1, column=0, sticky=tk.W, pady=(0, 5))
+        
         # Parameters section
         params_frame = ttk.LabelFrame(main_frame, text="Stimulation Parameters", padding="5")
-        params_frame.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
+        params_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
         
         # DAC Amplitude
         ttk.Label(params_frame, text="DAC Amplitude:").grid(row=0, column=0, sticky=tk.W, pady=2)
@@ -80,15 +98,32 @@ class NordicBLEGUI:
                                      command=self.send_parameters, state="disabled")
         self.send_button.grid(row=3, column=0, columnspan=3, pady=(10, 0))
         
+        # Quick control buttons
+        button_frame = ttk.Frame(params_frame)
+        button_frame.grid(row=4, column=0, columnspan=3, pady=(5, 0))
+        
+        self.stop_button = ttk.Button(button_frame, text="STOP (DAC = 0V)", 
+                                     command=self.emergency_stop, state="disabled",
+                                     style="Emergency.TButton")
+        self.stop_button.grid(row=0, column=0, padx=(0, 5))
+        
+        self.start_button = ttk.Button(button_frame, text="START", 
+                                      command=self.quick_start, state="disabled")
+        self.start_button.grid(row=0, column=1)
+        
+        # Configure emergency button style
+        style = ttk.Style()
+        style.configure("Emergency.TButton", foreground="red")
+        
         # Log section
         log_frame = ttk.LabelFrame(main_frame, text="Log", padding="5")
-        log_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
+        log_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
         
         # Text widget with scrollbar
         text_frame = ttk.Frame(log_frame)
         text_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
-        self.log_text = tk.Text(text_frame, height=15, width=50)
+        self.log_text = tk.Text(text_frame, height=12, width=50)
         scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=self.log_text.yview)
         self.log_text.configure(yscrollcommand=scrollbar.set)
         
@@ -102,9 +137,53 @@ class NordicBLEGUI:
         
         # Configure main frame weights
         main_frame.columnconfigure(0, weight=1)
-        main_frame.rowconfigure(2, weight=1)
+        main_frame.rowconfigure(3, weight=1)
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
+    
+    def on_start_changed(self):
+        """Handle start checkbox state change"""
+        if self.start_var.get():
+            self.stim_status_label.config(text="Status: ENABLED (DAC Active)", foreground="green")
+            self.log_message("Stimulation ENABLED - DAC will output configured amplitude")
+        else:
+            self.stim_status_label.config(text="Status: STOPPED (DAC = 0V)", foreground="red")
+            self.log_message("Stimulation STOPPED - DAC forced to 0V (0x8000)")
+            # Automatically send stop command when unchecked
+            if self.connected:
+                self.send_stop_command()
+    
+    def emergency_stop(self):
+        """Emergency stop - immediately disable stimulation"""
+        self.start_var.set(False)
+        self.on_start_changed()
+        if self.connected:
+            self.send_stop_command()
+    
+    def quick_start(self):
+        """Quick start - enable stimulation and send current parameters"""
+        self.start_var.set(True)
+        self.on_start_changed()
+        if self.connected:
+            self.send_parameters()
+    
+    def send_stop_command(self):
+        """Send command to set DAC to 0V"""
+        try:
+            # Get current pulse width and frequency, but set DAC to 0V (0x8000)
+            pulse_width = int(self.pulse_var.get()) if self.pulse_var.get().isdigit() else 500
+            frequency = int(self.freq_var.get()) if self.freq_var.get().isdigit() else 100
+            
+            # 0x8000 = 32768 decimal = 0V output
+            data = struct.pack('<HHH', 0x8000, pulse_width, frequency)
+            
+            self.log_message("Sending STOP command: DAC=0V (0x8000)")
+            
+            future = self.run_coroutine(self._send_data(data))
+            threading.Thread(target=self._check_send_result, args=(future,), daemon=True).start()
+            
+        except Exception as e:
+            self.log_message(f"Stop command error: {str(e)}")
     
     def log_message(self, message):
         """Add message to log with timestamp"""
@@ -200,11 +279,15 @@ class NordicBLEGUI:
             self.scan_button.config(state="disabled")
             self.disconnect_button.config(state="normal")
             self.send_button.config(state="normal")
+            self.stop_button.config(state="normal")
+            self.start_button.config(state="normal")
         else:
             self.status_label.config(text="Status: Disconnected", foreground="red")
             self.scan_button.config(state="normal")
             self.disconnect_button.config(state="disabled")
             self.send_button.config(state="disabled")
+            self.stop_button.config(state="disabled")
+            self.start_button.config(state="disabled")
     
     def disconnect(self):
         """Disconnect from device"""
@@ -238,17 +321,25 @@ class NordicBLEGUI:
             pulse_width = int(self.pulse_var.get())
             frequency = int(self.freq_var.get())
             
-            if not (0 <= dac_amp <= 65535):
+            if not (-D2B.MAX_CURRENT <= dac_amp <= D2B.MAX_CURRENT):
                 raise ValueError(f"DAC amplitude must be between {-D2B.MAX_CURRENT} and {D2B.MAX_CURRENT}")
             if not (0 <= pulse_width <= 65535):
                 raise ValueError("Pulse width must be 0-65535")
             if not (0 <= frequency <= 65535):
                 raise ValueError("Frequency must be 0-65535")
             
-            # Pack data as little-endian uint16 values (matching C struct)
-            data = struct.pack('<HHH', D2B.decimal_to_binary(dac_amp), pulse_width, frequency)
+            # Check if stimulation is enabled
+            if not self.start_var.get():
+                # If not enabled, force DAC to 0V regardless of input
+                dac_binary = 0x8000
+                self.log_message(f"Stimulation DISABLED - Sending: DAC=0V (overriding {dac_amp}μA), Pulse={pulse_width}μs, Freq={frequency}Hz")
+            else:
+                # If enabled, convert the amplitude normally
+                dac_binary = D2B.decimal_to_binary(dac_amp)
+                self.log_message(f"Stimulation ENABLED - Sending: DAC={dac_amp}μA, Pulse={pulse_width}μs, Freq={frequency}Hz")
             
-            self.log_message(f"Sending: DAC={dac_amp}μA, Pulse={pulse_width}μs, Freq={frequency}Hz")
+            # Pack data as little-endian uint16 values (matching C struct)
+            data = struct.pack('<HHH', dac_binary, pulse_width, frequency)
             
             # Send data
             future = self.run_coroutine(self._send_data(data))
