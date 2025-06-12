@@ -47,11 +47,23 @@ void update_stim_frequency(uint16_t frequency_hz) {
     
     // Convert to timer ticks
     uint32_t period_ticks = nrfx_timer_us_to_ticks(&timer_inst, period_us);
-    
+
+    //LEE ADDING CODE *************************************************************************************************************************
+    //Clear the TIMER to stop missing compare events
+    nrfx_timer_disable(&timer_inst);
+    nrfx_timer_clear(&timer_inst);
+    //LEE DONE ADDING CODE*************************************************************************************************************************
+
     // Update channel 0 compare value
     // Note: We keep the SHORT to clear on compare to maintain periodic operation
     nrfx_timer_extended_compare(&timer_inst, NRF_TIMER_CC_CHANNEL0, period_ticks, 
         NRF_TIMER_SHORT_COMPARE0_CLEAR_MASK, true);
+
+    //LEE STILL ADDING CODE*************************************************************************************************************************
+    //Start the timer again
+    nrfx_timer_enable(&timer_inst);
+    //LEE DONE ADDING CODE*************************************************************************************************************************
+
     // Also update the measurement timer expectations if needed
     if (MEASURE_TIMER == 1) {
         // Reset error counters when frequency changes
